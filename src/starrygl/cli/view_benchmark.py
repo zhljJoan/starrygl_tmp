@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import argparse
+import json
+import statistics
+import time
+from pathlib import Path
+
+import torch
+
+from starrygl.batch import Batch
+from starrygl.prepare import load_graph_data
+from starrygl.prepare.snapshot_csc import build_snapshot_csc_views
+from starrygl.prepare.temporal_csr import build_temporal_csr_view
+from starrygl.runtime.dataloader.blocks import event_rows_to_graph_block, snapshot_row_to_graph_block
+
+
+def _time(fn, repeats: int):
+    values, result = [], None
+    for _ in range(repeats):
+        start = time.perf_counter()
+        result = fn()
+        values.append(time.perf_counter() - start)
+    return result, {"median_seconds": statistics.median(values), "samples_seconds": values}
+
+
+def _event_recent(view, roots, fanout):
+    rows = torch.arange(view["src"].numel())
+    rows = rows[torch.isin(view["src"], roots)]
+    order = torch.argsort(view["src"].index_select(0, rows), stable=True)
+    rows = rows.index_select(0, order)
+    keys = view["src"].index_select(0, rows)
+    counts = torch.bincount(keys, minlength=int(view["src"].max()) + 1)
+    starts = counts.cumsum(0) - counts
+    positions = torch.arange(rows.numel()) - torch.repeat_interleave(starts, counts)
+    keep = positions >= torch.repeat_interleave((counts - fanout).clamp_min(0), counts)
+    return event_rows_to_graph_block(view, rows[keep], extra_nodes=roots)
+
+
+def _tcsr_recent(view, roots, fanout):
+    starts = view["indptr"].index_select(0, roots)
+    ends = view["indptr"].index_select(0, roots + 1)
+    lengths = (ends - starts).clamp_max(fanout)
+    offsets = torch.arange(fanout).expand(roots.numel(), -1)
+    positions = ends[:, None] - lengths[:, None] + offsets
+    valid = offsets < lengths[:, None]
+    positions = positions[valid]
+    rows = view["edge_order"].index_select(0, positions)
+    return event_rows_to_graph_block(view, rows, extra_nodes=roots)
+
+
+def _snapshot_event(graph, begin, end):
+    view = {"src": graph.src, "dst": graph.dst, "edge_ids": graph.edge_ids, "ts": graph.ts}
+    return event_rows_to_graph_block(view, torch.arange(begin, end))
+
+
+def _snapshot_tcsr(graph, tcsr, begin, end):
+    feature_rows = tcsr["edge_feature_ids"].index_select(0, tcsr["edge_order"])
+    positions = ((feature_rows >= begin) & (feature_rows < end)).nonzero(as_tuple=True)[0]
+    rows = tcsr["edge_order"].index_select(0, positions)
+    return event_rows_to_graph_block(tcsr, rows)
+
+
+def _edge_ids(batch):
+    block = batch.graph if batch.graph is not None else batch.blocks[0][0]
+    return torch.sort(block.edge_ids.long()).values
+
+
+def run(args):
+    if args.synthetic_edges:
+        generator = torch.Generator().manual_seed(20260915)
+        num_nodes = max(2, int(args.synthetic_edges ** 0.5))
+        graph = load_graph_data({"src": torch.randint(num_nodes, (args.synthetic_edges,), generator=generator),
+            "dst": torch.randint(num_nodes, (args.synthetic_edges,), generator=generator),
+            "ts": torch.arange(args.synthetic_edges), "num_nodes": num_nodes})
+    else:
+        graph = load_graph_data(args.data)
+    if args.max_edges and graph.src.numel() > args.max_edges:
+        keep = slice(0, args.max_edges)
+        graph = type(graph)(**{**vars(graph), "src": graph.src[keep], "dst": graph.dst[keep],
+            "ts": graph.ts[keep], "edge_ids": graph.edge_ids[keep], "time_ptr_2": None})
+    nodes, edges = graph.num_nodes, graph.src.numel()
+    ptr = graph.time_ptr_2
+    if ptr is None:
+        step = max(1, edges // args.snapshots)
+        starts = torch.arange(0, edges, step)[:args.snapshots]
+        ptr = torch.stack((starts, torch.cat((starts[1:], torch.tensor([edges])))), 1)
+    node_master = torch.zeros(nodes, dtype=torch.long)
+    edge_dist = torch.arange(edges, dtype=torch.long)
+    node_chunk = torch.zeros(nodes, dtype=torch.long)
+    edge_chunk = torch.zeros(edges, dtype=torch.long)
+    hot = torch.empty(0, dtype=torch.long)
+    hot_mask = torch.zeros(nodes, dtype=torch.bool)
+
+    t0 = time.perf_counter()
+    tcsr = build_temporal_csr_view(src=graph.src, dst=graph.dst, ts=graph.ts,
+        edge_ids=graph.edge_ids, node_dist_index=torch.arange(nodes), edge_dist_index=edge_dist,
+        node_to_chunk=node_chunk, edge_chunk=edge_chunk, time_ptr_2=ptr, num_nodes=nodes,
+        bidirectional=False, shared=False, node_is_hot=hot_mask)
+    tcsr_build = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    snapshots = build_snapshot_csc_views(src=graph.src, dst=graph.dst, ts=graph.ts,
+        edge_ids=graph.edge_ids, edge_dist_index=edge_dist, node_master=node_master,
+        hot_node_ids=hot, node_is_hot=hot_mask, node_to_chunk=node_chunk, time_ptr_2=ptr,
+        num_nodes=nodes, world_size=1)[0]["slices"]
+    snapshot_build = time.perf_counter() - t0
+
+    roots = torch.unique(graph.src[-args.batch_size:])
+    event_view = {"src": graph.src, "dst": graph.dst, "edge_ids": graph.edge_ids, "ts": graph.ts}
+    event_block, event_time = _time(lambda: _event_recent(event_view, roots, args.fanout), args.repeats)
+    tcsr_block, tcsr_time = _time(lambda: _tcsr_recent(tcsr, roots, args.fanout), args.repeats)
+    event_batch = Batch(mode="event", blocks=((event_block,),))
+    tcsr_batch = Batch(mode="event", blocks=((tcsr_block,),))
+    if not torch.equal(_edge_ids(event_batch), _edge_ids(tcsr_batch)):
+        raise RuntimeError("Event and T-CSR history queries produced different edges")
+
+    sid = len(snapshots) - 1 if args.snapshot < 0 else min(args.snapshot, len(snapshots) - 1)
+    begin, end = map(int, ptr[sid].tolist())
+    event_snap, event_snap_time = _time(lambda: _snapshot_event(graph, begin, end), args.repeats)
+    tcsr_snap, tcsr_snap_time = _time(lambda: _snapshot_tcsr(graph, tcsr, begin, end), args.repeats)
+    csc_snap, csc_time = _time(lambda: snapshot_row_to_graph_block(snapshots[sid]), args.repeats)
+    snapshot_batches = [Batch(mode="snapshot", graph=b) for b in (event_snap, tcsr_snap, csc_snap)]
+    expected = _edge_ids(snapshot_batches[0])
+    if any(not torch.equal(expected, _edge_ids(batch)) for batch in snapshot_batches[1:]):
+        raise RuntimeError("snapshot paths produced different edges")
+
+    result = {"data": "synthetic" if args.synthetic_edges else str(args.data), "num_nodes": nodes, "num_edges": int(edges),
+        "query": {"batch_roots": int(roots.numel()), "fanout": args.fanout,
+                  "snapshot": sid, "snapshot_edges": end - begin},
+        "build_seconds": {"event": 0.0, "temporal_csr": tcsr_build,
+                          "snapshot_csc": snapshot_build},
+        "model_ready_seconds": {"history_event": event_time, "history_tcsr": tcsr_time,
+            "snapshot_event": event_snap_time, "snapshot_tcsr": tcsr_snap_time,
+            "snapshot_csc": csc_time}}
+    result["amortized_seconds"] = {
+        str(n): {"history_event": n * event_time["median_seconds"],
+                 "history_tcsr": tcsr_build + n * tcsr_time["median_seconds"],
+                 "snapshot_event": n * event_snap_time["median_seconds"],
+                 "snapshot_tcsr": tcsr_build + n * tcsr_snap_time["median_seconds"],
+                 "snapshot_csc": snapshot_build + n * csc_time["median_seconds"]}
+        for n in (1, 5, 10, 50, 100)}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps(result, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=Path)
+    parser.add_argument("--synthetic-edges", type=int)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--batch-size", type=int, default=8000)
+    parser.add_argument("--fanout", type=int, default=10)
+    parser.add_argument("--snapshots", type=int, default=16)
+    parser.add_argument("--snapshot", type=int, default=-1)
+    parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--max-edges", type=int)
+    args = parser.parse_args()
+    if args.data is None and not args.synthetic_edges:
+        parser.error("one of --data or --synthetic-edges is required")
+    run(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -7442,3 +7442,23 @@ acceptance/provenance. Analysis script was run with zero completed formal jobs;
 it lists the active job and62 queued jobs, and reports no aggregate estimates.
 The source manifest's131 files were reverified. Full communication decomposition,
 pooled AP and other explicitly deferred plan items remain unimplemented.
+# 2026-09-15: three-view access and amortization benchmark
+
+- Latest state: added `starrygl.cli.view_benchmark` on
+  `ablation/view-benchmarks`; deterministic synthetic and LASTFM smoke runs
+  pass edge-set parity through model-ready `Batch` construction.
+- Attempted approaches: reused the Event row, T-CSR, Snapshot-CSC, GraphBlock,
+  and Batch implementations. The first directory-based GDELT smoke loaded
+  feature sidecars, so the graph-only benchmark now accepts an edge CSV or a
+  deterministic synthetic stream.
+- Files modified: `src/starrygl/cli/view_benchmark.py`,
+  `docs/design/current/view_ablation_benchmark.md`, and this log.
+- Checks run: `python -m compileall -q src/starrygl`; native sampler smoke;
+  `pytest -q tests/test_snapshot_uniform_sampling.py`; 20K synthetic-edge and
+  100K LASTFM-edge view benchmark smokes.
+- Efficiency alternatives: Torch vectorization was selected for the Event
+  control; existing prepared tensor layouts were reused for T-CSR and
+  Snapshot-CSC. No new DGL or C++/CUDA operator is needed for this initial
+  graph-access benchmark.
+- Unresolved risks: full-dataset runs and GPU-resident feature materialization
+  remain to be measured; CSV parse time is intentionally outside access timing.
