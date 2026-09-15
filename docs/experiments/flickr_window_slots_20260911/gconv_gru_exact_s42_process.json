@@ -1,0 +1,32 @@
+{
+  "name": "gconv_gru_exact_s42",
+  "command": [
+    "/home/zlj/.miniconda3/envs/tgnn_3.10/bin/python",
+    "-m",
+    "torch.distributed.run",
+    "--standalone",
+    "--nproc_per_node=2",
+    "-m",
+    "starrygl.cli.coupled_ablation",
+    "--data",
+    "/tmp/starrygl_open_flickr_ablation_20260911/data",
+    "--artifact-root",
+    "/tmp/starrygl_open_flickr_ablation_20260911/prepared_gconv_gru_2rank",
+    "--output",
+    "/mnt/data/zlj/starrygl-experiments/flickr_window_slots_20260911/results/gconv_gru_exact_s42",
+    "--model",
+    "gconv_gru",
+    "--policy",
+    "exact",
+    "--epochs",
+    "100",
+    "--eval-every",
+    "5"
+  ],
+  "gpus": "2,3",
+  "started_at_unix": 1789112678.6398528,
+  "pid": 2481100,
+  "returncode": 0,
+  "ended_at_unix": 1789116649.2527728,
+  "wall_seconds": 3970.6129200458527
+}

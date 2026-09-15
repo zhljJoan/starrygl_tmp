@@ -1,0 +1,33 @@
+{
+  "best_epoch": 95,
+  "best_val_mse": 0.042616885442000166,
+  "test_mse_exact": 0.046174557120711716,
+  "test_mse_operational": 0.046162810590532094,
+  "test_steps": 27,
+  "train_seconds": 3037.355151622556,
+  "validation_seconds": 1336.3700911258347,
+  "test_seconds": 230.44635562319309,
+  "test_state_reads": {
+    "read_rows": 69837981,
+    "shared_rows": 3087183,
+    "shared_fraction": 0.044204929120158845,
+    "shared_initial_rows": 0,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "shared_lag_histogram": {
+      "0": 1526264,
+      "1": 1560919
+    },
+    "shared_mean_lag": 0.5056127220187465
+  },
+  "exact_test_state_reads": {
+    "read_rows": 69837981,
+    "shared_rows": 0,
+    "shared_fraction": 0.0,
+    "shared_initial_rows": 0,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "shared_lag_histogram": {},
+    "shared_mean_lag": 0.0
+  }
+}

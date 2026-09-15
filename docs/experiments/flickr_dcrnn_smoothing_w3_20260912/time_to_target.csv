@@ -1,0 +1,7 @@
+arm,threshold,epoch,training_minutes,wall_minutes
+exact,0.05,,,
+exact,0.02,,,
+cache,0.05,,,
+cache,0.02,,,
+smooth,0.05,,,
+smooth,0.02,,,

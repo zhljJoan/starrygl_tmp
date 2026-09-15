@@ -1,0 +1,24 @@
+
+\begin{abstract}
+Dynamic graph neural networks (DGNNs) deliver strong performance on evolving graphs by jointly modeling spatial topology and temporal evolution. 
+However, the diversity of modeling paradigms induces highly heterogeneous data access and execution patterns, creating a fundamental trade-off between generality and efficiency, particularly in large-scale distributed DGNN training. 
+Existing distributed DGNN systems specialize in narrow subsets of the design space across temporal representation, spatial aggregation, and spatiotemporal coupling, leading to fragmented support and substantial engineering effort for cross-paradigm deployment. 
+While prior efforts unify programming interfaces, they largely ignore the underlying data management challenges and remain confined to single-node execution.
+%
+We present StarryGL, a distributed DGNN training framework that fundamentally unifies the full design space through a novel Spatio-Temporal Chunk (STC) abstraction. 
+STCs serve as the atomic unit governing storage, scheduling, computation, and communication. 
+StarryGL integrates a multi-view chunk store that decouples logical graph views from physical layouts, a dependency-aware chunk scheduler that maximizes data locality and pipeline utilization, and a generalized execution interface that maps diverse DGNN semantics to optimized runtime plans.
+Extensive experiments on eight real-world dynamic graphs demonstrate that StarryGL achieves comparable or superior accuracy and throughput to state-of-the-art specialized DGNN systems across multiple tasks, effectively bridging the gap between generality and efficiency in distributed DGNN training.
+\end{abstract}
+
+
+\begin{comment} %% Older version before 20260714
+\begin{abstract}
+Dynamic graph neural networks (DGNNs) are essential for modeling time-evolving data, yet their models exhibit high diversity across three dimensions: temporal representation, neighbor access, and computational coupling. Existing distributed DGNN systems are typically hardwired for specific model paradigms, leading to severe system fragmentation and an inability to uniformly support diverse DGNN models, while also suffering from architectural bottlenecks in data access and scheduling. To address this, we propose StarryGL, a unified distributed DGNN training library built on the Spatiotemporal Chunk abstraction. Through a chunk-indexed multi-view store, a coupling-aware execution engine, and a unified compilation interface, StarryGL maps diverse model requirements to optimized physical execution plans. Extensive experiments on eight real-world datasets demonstrate that StarryGL achieves comparable or superior accuracy and throughput to state-of-the-art specialized systems across multiple tasks, while successfully unifying the distributed training paradigms for both continuous event streams and discrete snapshot-based dynamic graphs.
+
+
+
+Dynamic graph neural networks (DGNNs) deliver strong performance on evolving graphs by jointly modeling spatial topology and temporal evolution. However, the diversity of modeling paradigms induces highly heterogeneous data access and execution patterns, creating a fundamental trade-off between generality and efficiency, particularly in large-scale distributed DGNN training. Existing distributed DGNN systems specialize in narrow subsets of the design space across temporal representation, spatial aggregation, and spatiotemporal coupling, leading to fragmented support and substantial engineering effort for cross-paradigm deployment. While prior efforts unify programming interfaces, they largely ignore the underlying data management challenges and remain confined to single-node execution.We present StarryGL, a distributed DGNN training framework that fundamentally unifies the full design space through a novel Spatio-Temporal Chunk (STC) abstraction. STCs serve as the atomic unit governing storage, scheduling, computation, and communication. StarryGL integrates a multi-view chunk store that decouples logical graph views from physical layouts, a dependency-aware chunk scheduler that maximizes data locality and pipeline utilization, and a generalized execution plan that maps diverse DGNN semantics to optimized execution plans.Extensive experiments on eight real-world dynamic graphs demonstrate that StarryGL achieves comparable or superior accuracy and throughput to state-of-the-art specialized DGNN systems across multiple tasks, effectively bridging the gap between generality and efficiency in distributed DGNN training.
+\end{abstract}
+\end{comment}
+

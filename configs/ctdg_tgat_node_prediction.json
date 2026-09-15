@@ -1,0 +1,30 @@
+{
+  "data": {
+    "source": "${STARRYGL_DATA_ROOT}/TGL-DATA/WIKI",
+    "temporal_representation": "event_stream",
+    "random_node_feat_dim": 2,
+    "random_node_feat_seed": 0
+  },
+  "backbone": {
+    "name": "tgat",
+    "in_dim": 2,
+    "hidden_dim": 16,
+    "out_dim": 16,
+    "node_output_dim": 2,
+    "num_layers": 1,
+    "temporal_representation": "event_stream",
+    "spatial_aggregation": "sampled_neighbor",
+    "coupling": "decoupled",
+    "state": "stateless"
+  },
+  "task": {"name": "node_prediction"},
+  "runtime": {
+    "sampling": {
+      "mode": "neighbor",
+      "window": {"policy": "event_window"},
+      "neighbor": {"fanouts": [10], "policy": "recent"}
+    },
+    "preprocess": {"partition_backend": "speed_partition", "chunks_per_rank": 2},
+    "train": {"batch_size": 1000, "epochs": 1, "lr": 0.001}
+  }
+}

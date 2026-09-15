@@ -1,0 +1,60 @@
+{
+  "status": "passed",
+  "source_modules_verified": 103,
+  "runs": {
+    "dcrnn_exact_s42": {
+      "epochs": 100,
+      "validation_points": 21,
+      "best_epoch": 100,
+      "rank_checkpoints_identical": true,
+      "max_observed_shared_lag": 0,
+      "owner_stale_rows": 0,
+      "future_rows": 0,
+      "max_compensation_updates_rank0": 0,
+      "test_shared_fraction": 0.0
+    },
+    "dcrnn_stale1_s42": {
+      "epochs": 100,
+      "validation_points": 21,
+      "best_epoch": 100,
+      "rank_checkpoints_identical": true,
+      "max_observed_shared_lag": 1,
+      "owner_stale_rows": 0,
+      "future_rows": 0,
+      "max_compensation_updates_rank0": 0,
+      "test_shared_fraction": 0.05474557750499765
+    },
+    "gconv_gru_exact_s42": {
+      "epochs": 100,
+      "validation_points": 21,
+      "best_epoch": 100,
+      "rank_checkpoints_identical": true,
+      "max_observed_shared_lag": 0,
+      "owner_stale_rows": 0,
+      "future_rows": 0,
+      "max_compensation_updates_rank0": 0,
+      "test_shared_fraction": 0.0
+    },
+    "gconv_gru_stale1_s42": {
+      "epochs": 100,
+      "validation_points": 21,
+      "best_epoch": 95,
+      "rank_checkpoints_identical": true,
+      "max_observed_shared_lag": 1,
+      "owner_stale_rows": 0,
+      "future_rows": 0,
+      "max_compensation_updates_rank0": 0,
+      "test_shared_fraction": 0.044204929120158845
+    }
+  },
+  "implementation_test_record": {
+    "passed": 272,
+    "skipped": 15
+  },
+  "end_to_end_parity": {
+    "paired_epochs": 2,
+    "max_parameter_difference": 7.450580596923828e-09,
+    "single_test": 0.1692071110010147,
+    "two_rank_test": 0.16920709609985352
+  }
+}

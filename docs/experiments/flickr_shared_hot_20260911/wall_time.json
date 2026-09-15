@@ -1,0 +1,22 @@
+{
+  "dcrnn_exact_s42": {
+    "startup_to_training_log_seconds": 4573.842006206512,
+    "logged_intervals_seconds": 4563.759694144595,
+    "log_mtime_unix": 1789104673.3520062
+  },
+  "dcrnn_stale1_s42": {
+    "startup_to_training_log_seconds": 4677.159507036209,
+    "logged_intervals_seconds": 4667.275553022511,
+    "log_mtime_unix": 1789104777.839507
+  },
+  "gconv_gru_exact_s42": {
+    "startup_to_training_log_seconds": 4336.950306653976,
+    "logged_intervals_seconds": 4332.082232147921,
+    "log_mtime_unix": 1789104609.7803066
+  },
+  "gconv_gru_stale1_s42": {
+    "startup_to_training_log_seconds": 4378.966102838516,
+    "logged_intervals_seconds": 4373.725242748391,
+    "log_mtime_unix": 1789104652.9561028
+  }
+}

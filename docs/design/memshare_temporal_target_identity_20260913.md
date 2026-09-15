@@ -1,0 +1,15 @@
+# Event row identity for MemShare parity (2026-09-13)
+
+Before implementation: Prepare canonical event/task rows -> DataLoader prepared task slice -> training/evaluation negatives -> Event graph accessor / native MFG -> materialized Batch -> state dependency hydration -> encode -> task -> runtime-owned StateDelta commit. Snapshot uses the same loader, Batch, task and state commit; only graph access and recurrent scan specialize.
+
+The native MFG already carries srcdata/dstdata ts. Target route construction nevertheless searches only node IDs; two occurrences of a node at different cutoffs select the same last row. Lazy routing repeats the same lookup in model graph helpers. This prevents a valid timestamp-aware deduplication claim and can contaminate loss/gradient comparisons with MemShare.
+
+Reuse the existing vectorized state-query (node, timestamp) grouping in utils/index.py for state hydration, root deduplication and target row mapping. Bind a temporal target route before the lazy branch when the MFG has timestamp rows; batch endpoint gathers then consume it across all Event models. Snapshot paths without timestamped MFG rows retain their current mapping. No new model/runtime chain or configuration.
+
+Efficiency: Torch stable sorting/scatter reuse is sufficient and preserves int64 node IDs and fractional cutoffs independently, without lossy float ID packing. DGL exposes graph gathers but not this composite identity join. Existing native sampler supplies timestamp columns; a custom C++ join is deferred until profiling justifies replacing the Torch operation. No per-node or per-edge Python loop. The unrelated native sampling integer-time conversion remains a separate parity check.
+
+Validation planned: repeated node/different cutoff target rows, both negative modes and ratios, lazy routing, missing cutoff, large int64 IDs, state grouping regression, Event/model tests. Existing source/Flare benchmark files remain frozen. A correct row join alone does not establish complete temporal attention/state or MemShare performance parity.
+
+## First four-rank execution: owner response device repair
+
+The actual WIKI run stopped before epoch1: Stage B submits CPU request IDs/order, receives CUDA feature payload after feature cache moves to GPU, then remote_fetch._restore_order passes the CPU order into CUDA index_copy_. This is the common owner response restoration used by features, state and mailbox; repair the index device once there. Same Prepare -> task -> accessor -> Batch -> dependency -> model -> task -> commit spine as above. No collective order or value math changes. Selected Torch .to(value.device) at the restoration point; DGL/custom C++ cannot remove the requirement that CUDA scatter indices reside on device. Tests must include a CPU order with CUDA payload and empty response; rerun actual four-rank driver. Extra per-response small index H2D remains measurable overhead.

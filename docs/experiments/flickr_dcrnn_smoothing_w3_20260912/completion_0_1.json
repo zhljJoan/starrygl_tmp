@@ -1,0 +1,8 @@
+{
+  "completed_at_unix": 1789183984.2946517,
+  "arms": [
+    "exact",
+    "cache"
+  ],
+  "epochs_each": 10
+}

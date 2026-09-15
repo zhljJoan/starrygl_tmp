@@ -1,0 +1,107 @@
+{
+  "best_epoch": 100,
+  "best_val_mse": 0.06106845919902508,
+  "test_mse_exact": null,
+  "test_mse_operational": 0.060498595237731934,
+  "test_steps": 27,
+  "train_seconds": 4419.946295522153,
+  "validation_seconds": 2026.2621068335138,
+  "test_seconds": 173.55463466513902,
+  "setup_seconds": 10.665194043889642,
+  "run_seconds_total": 6631.037008070853,
+  "run_seconds_to_last_epoch": 6457.478562955745,
+  "peak_allocated_bytes_rankmax": 9094251008,
+  "peak_reserved_bytes_rankmax": 47219474432,
+  "test_state_reads": {
+    "read_rows": 77074408,
+    "shared_rows": 12592508,
+    "cold_history_inputs": [
+      {
+        "slot": 0,
+        "rows": 5755978,
+        "initial_rows": 0,
+        "future_rows": 0,
+        "nonzero_extrapolation_rows": 0,
+        "mean_lag": 0.0,
+        "lag_histogram": {
+          "0": 5755978
+        }
+      },
+      {
+        "slot": 1,
+        "rows": 5953213,
+        "initial_rows": 0,
+        "future_rows": 0,
+        "nonzero_extrapolation_rows": 0,
+        "mean_lag": 0.0,
+        "lag_histogram": {
+          "0": 5953213
+        }
+      },
+      {
+        "slot": 2,
+        "rows": 6144332,
+        "initial_rows": 0,
+        "future_rows": 0,
+        "nonzero_extrapolation_rows": 0,
+        "mean_lag": 0.0,
+        "lag_histogram": {
+          "0": 6144332
+        }
+      }
+    ],
+    "hot_shared_predictions": [
+      {
+        "slot": 0,
+        "rows": 11975184,
+        "initial_rows": 0,
+        "future_rows": 0,
+        "nonzero_extrapolation_rows": 5954454,
+        "mean_lag": 0.49723277738362937,
+        "lag_histogram": {
+          "0": 6020730,
+          "1": 5954454
+        }
+      },
+      {
+        "slot": 1,
+        "rows": 12435768,
+        "initial_rows": 0,
+        "future_rows": 0,
+        "nonzero_extrapolation_rows": 6003144,
+        "mean_lag": 0.4827320676937685,
+        "lag_histogram": {
+          "0": 6432624,
+          "1": 6003144
+        }
+      },
+      {
+        "slot": 2,
+        "rows": 12896352,
+        "initial_rows": 0,
+        "future_rows": 0,
+        "nonzero_extrapolation_rows": 12896352,
+        "mean_lag": 1.4998191736701976,
+        "lag_histogram": {
+          "1": 6450508,
+          "2": 6445844
+        }
+      }
+    ],
+    "shared_fraction": 0.16338118354408898,
+    "shared_initial_rows": 0,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "shared_lag_histogram": {
+      "0": 12592508
+    },
+    "shared_mean_lag": 0.0,
+    "history_rows": 77074408,
+    "history_remote_hot_rows": 6448176,
+    "history_remote_cold_rows": 6144332,
+    "history_hot_mean_lag": 0.0,
+    "history_cold_mean_lag": 0.0,
+    "stale_remote_nonzero_increment_rows": 0
+  },
+  "exact_test_state_reads": null
+}

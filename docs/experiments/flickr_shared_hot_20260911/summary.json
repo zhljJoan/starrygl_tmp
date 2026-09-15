@@ -1,0 +1,187 @@
+{
+  "complete": true,
+  "runs": [
+    {
+      "name": "dcrnn_exact_s42",
+      "model": "dcrnn",
+      "arm": "exact",
+      "epochs_completed": 100,
+      "result": {
+        "best_epoch": 100,
+        "best_val_mse": 0.0132837903041106,
+        "test_mse_exact": 0.02334201667043898,
+        "test_mse_operational": 0.02334201667043898,
+        "test_steps": 27,
+        "train_seconds": 3251.6118314117193,
+        "validation_seconds": 1312.147862732876,
+        "test_seconds": 114.63222662825137,
+        "test_state_reads": {
+          "read_rows": 71847283,
+          "shared_rows": 0,
+          "shared_fraction": 0.0,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {},
+          "shared_mean_lag": 0.0
+        },
+        "exact_test_state_reads": {
+          "read_rows": 71847283,
+          "shared_rows": 0,
+          "shared_fraction": 0.0,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {},
+          "shared_mean_lag": 0.0
+        }
+      },
+      "diagnostic": null
+    },
+    {
+      "name": "dcrnn_stale1_comp_s42",
+      "model": "dcrnn",
+      "arm": "shared_hot+comp",
+      "epochs_completed": 4,
+      "result": null,
+      "diagnostic": {
+        "status": "stopped_redundant_noop_check",
+        "compared_with": "dcrnn_stale1_s42",
+        "matched_epochs": 4,
+        "max_train_mse_difference": 0.0,
+        "reason": "Current increment updates require locally produced shared-read nodes; shared reads are remote-only in this partition. All compared training losses match exactly. No final convergence result is claimed for this diagnostic run."
+      }
+    },
+    {
+      "name": "dcrnn_stale1_s42",
+      "model": "dcrnn",
+      "arm": "shared_hot",
+      "epochs_completed": 100,
+      "result": {
+        "best_epoch": 100,
+        "best_val_mse": 0.013128441686813649,
+        "test_mse_exact": 0.023019636118853534,
+        "test_mse_operational": 0.023014011206450285,
+        "test_steps": 27,
+        "train_seconds": 3325.0973363146186,
+        "validation_seconds": 1342.1782167078927,
+        "test_seconds": 206.09680182114244,
+        "test_state_reads": {
+          "read_rows": 71847283,
+          "shared_rows": 3933321,
+          "shared_fraction": 0.05474557750499765,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {
+            "0": 1949787,
+            "1": 1983534
+          },
+          "shared_mean_lag": 0.5042898863326944
+        },
+        "exact_test_state_reads": {
+          "read_rows": 71847283,
+          "shared_rows": 0,
+          "shared_fraction": 0.0,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {},
+          "shared_mean_lag": 0.0
+        }
+      },
+      "diagnostic": null
+    },
+    {
+      "name": "gconv_gru_exact_s42",
+      "model": "gconv_gru",
+      "arm": "exact",
+      "epochs_completed": 100,
+      "result": {
+        "best_epoch": 100,
+        "best_val_mse": 0.045185396304497354,
+        "test_mse_exact": 0.04857231069494177,
+        "test_mse_operational": 0.04857231069494177,
+        "test_steps": 27,
+        "train_seconds": 2997.8550466261804,
+        "validation_seconds": 1334.2271855217405,
+        "test_seconds": 112.93336849007756,
+        "test_state_reads": {
+          "read_rows": 69837981,
+          "shared_rows": 0,
+          "shared_fraction": 0.0,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {},
+          "shared_mean_lag": 0.0
+        },
+        "exact_test_state_reads": {
+          "read_rows": 69837981,
+          "shared_rows": 0,
+          "shared_fraction": 0.0,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {},
+          "shared_mean_lag": 0.0
+        }
+      },
+      "diagnostic": null
+    },
+    {
+      "name": "gconv_gru_stale1_no_comp_s42",
+      "model": "gconv_gru",
+      "arm": "shared_hot",
+      "epochs_completed": 5,
+      "result": null,
+      "diagnostic": {
+        "status": "stopped_redundant_noop_check",
+        "compared_with": "gconv_gru_stale1_s42",
+        "matched_epochs": 4,
+        "max_train_mse_difference": 0.0,
+        "reason": "Current increment updates require locally produced shared-read nodes; shared reads are remote-only in this partition. All compared training losses match exactly. No final convergence result is claimed for this diagnostic run."
+      }
+    },
+    {
+      "name": "gconv_gru_stale1_s42",
+      "model": "gconv_gru",
+      "arm": "shared_hot+comp",
+      "epochs_completed": 100,
+      "result": {
+        "best_epoch": 95,
+        "best_val_mse": 0.042616885442000166,
+        "test_mse_exact": 0.046174557120711716,
+        "test_mse_operational": 0.046162810590532094,
+        "test_steps": 27,
+        "train_seconds": 3037.355151622556,
+        "validation_seconds": 1336.3700911258347,
+        "test_seconds": 230.44635562319309,
+        "test_state_reads": {
+          "read_rows": 69837981,
+          "shared_rows": 3087183,
+          "shared_fraction": 0.044204929120158845,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {
+            "0": 1526264,
+            "1": 1560919
+          },
+          "shared_mean_lag": 0.5056127220187465
+        },
+        "exact_test_state_reads": {
+          "read_rows": 69837981,
+          "shared_rows": 0,
+          "shared_fraction": 0.0,
+          "shared_initial_rows": 0,
+          "future_rows": 0,
+          "owner_stale_rows": 0,
+          "shared_lag_histogram": {},
+          "shared_mean_lag": 0.0
+        }
+      },
+      "diagnostic": null
+    }
+  ]
+}

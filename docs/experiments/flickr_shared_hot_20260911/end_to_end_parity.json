@@ -1,0 +1,6 @@
+{
+  "paired_epochs": 2,
+  "max_parameter_difference": 7.450580596923828e-09,
+  "single_test": 0.1692071110010147,
+  "two_rank_test": 0.16920709609985352
+}

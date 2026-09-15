@@ -1,0 +1,74 @@
+[
+  {
+    "model": "DCRNN K=1",
+    "dataset": "soc-flickr-growth",
+    "provenance": "historical TGM-aligned run; not a state-delay ablation",
+    "source_log": "tgm_dtdg_edge_predict/logs/final_available_results_20260709_123106/dcrnn_k1/node_40_60/soc-flickr-growth_dcrnn_node.log",
+    "source_sha256": "a5d1fdaa908776dc65c121117e3dfc1bfd2cbe40eb0368fac2f7da9d71d45cb0",
+    "epochs": 105,
+    "first_holdout_mse": 0.474051,
+    "best_observed_holdout_mse": 0.018122,
+    "best_observed_epoch": 104,
+    "final_holdout_mse": 0.018224,
+    "last_5_holdout_mse_mean": 0.018238,
+    "train_seconds": 2002.1374000000003,
+    "eval_seconds": 31064.165199999992,
+    "median_train_seconds": 19.3322,
+    "median_eval_seconds": 295.6965,
+    "first_observed_threshold_crossings": {
+      "0.1": {
+        "epoch": 9,
+        "cumulative_train_seconds": 171.7461,
+        "cumulative_train_eval_seconds": 2838.9446
+      },
+      "0.05": {
+        "epoch": 19,
+        "cumulative_train_seconds": 361.56020000000007,
+        "cumulative_train_eval_seconds": 5986.4033
+      },
+      "0.03": {
+        "epoch": 35,
+        "cumulative_train_seconds": 663.1095000000003,
+        "cumulative_train_eval_seconds": 11003.421400000001
+      }
+    },
+    "val_and_test_are_identical": true,
+    "seed_not_logged": true
+  },
+  {
+    "model": "DCRNN K=2",
+    "dataset": "soc-flickr-growth",
+    "provenance": "historical TGM-aligned run; not a state-delay ablation",
+    "source_log": "tgm_dtdg_edge_predict/logs/final_available_results_20260709_123106/dcrnn_k2/node_40_60/soc-flickr-growth_dcrnn_k2_node.log",
+    "source_sha256": "622186d369c85f836e5fc5e54b471d7c8534b1d12d3eadcb9b9b42c1daf5a446",
+    "epochs": 63,
+    "first_holdout_mse": 0.339075,
+    "best_observed_holdout_mse": 0.026653,
+    "best_observed_epoch": 52,
+    "final_holdout_mse": 0.02685,
+    "last_5_holdout_mse_mean": 0.029898,
+    "train_seconds": 2007.0816,
+    "eval_seconds": 22850.918000000005,
+    "median_train_seconds": 32.0969,
+    "median_eval_seconds": 367.8937,
+    "first_observed_threshold_crossings": {
+      "0.1": {
+        "epoch": 11,
+        "cumulative_train_seconds": 351.01640000000003,
+        "cumulative_train_eval_seconds": 4401.216200000001
+      },
+      "0.05": {
+        "epoch": 23,
+        "cumulative_train_seconds": 729.6674000000002,
+        "cumulative_train_eval_seconds": 9120.736200000001
+      },
+      "0.03": {
+        "epoch": 51,
+        "cumulative_train_seconds": 1619.8862000000001,
+        "cumulative_train_eval_seconds": 20075.869400000007
+      }
+    },
+    "val_and_test_are_identical": true,
+    "seed_not_logged": true
+  }
+]

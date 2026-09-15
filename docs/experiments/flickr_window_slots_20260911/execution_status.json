@@ -1,0 +1,10 @@
+{
+  "recorded_unix": 1789117279.5646641,
+  "dcrnn_queue_pid": 2481069,
+  "queue_state": "resumed only to reap terminated cache child and exit; remaining DCRNN arms deferred",
+  "current_request": "GConvGRU first; review DCRNN curves and two-stage graph dependencies",
+  "completed_dcrnn_arm": "exact",
+  "dcrnn_cache_torchrun_pid": 2516884,
+  "dcrnn_cache_action": "SIGTERM before first epoch; preserve startup log; rerun requires new output directory",
+  "gconv_gru": "continue cache then compensation"
+}

@@ -1,0 +1,49 @@
+{
+  "best_epoch": 1,
+  "best_val_mse": 0.3720066547393799,
+  "test_mse_exact": 0.22692044079303741,
+  "test_mse_operational": 0.22692044079303741,
+  "test_steps": 4,
+  "train_seconds": 0.2974574752151966,
+  "validation_seconds": 0.03278521401807666,
+  "test_seconds": 0.10397079400718212,
+  "setup_seconds": 1.3684525727294385,
+  "run_seconds_total": 1.8047355879098177,
+  "run_seconds_to_last_epoch": 1.6998677058145404,
+  "peak_allocated_bytes_rankmax": 0,
+  "peak_reserved_bytes_rankmax": 0,
+  "test_state_reads": {
+    "read_rows": 40,
+    "shared_rows": 20,
+    "shared_fraction": 0.5,
+    "shared_initial_rows": 0,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "shared_lag_histogram": {
+      "0": 20
+    },
+    "shared_mean_lag": 0.0,
+    "history_rows": 40,
+    "history_remote_hot_rows": 10,
+    "history_remote_cold_rows": 10,
+    "history_hot_mean_lag": 0.0,
+    "history_cold_mean_lag": 0.0,
+    "stale_remote_nonzero_increment_rows": 0
+  },
+  "exact_test_state_reads": {
+    "read_rows": 40,
+    "shared_rows": 0,
+    "shared_fraction": 0.0,
+    "shared_initial_rows": 0,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "shared_lag_histogram": {},
+    "shared_mean_lag": 0.0,
+    "history_rows": 0,
+    "history_remote_hot_rows": 0,
+    "history_remote_cold_rows": 0,
+    "history_hot_mean_lag": 0.0,
+    "history_cold_mean_lag": 0.0,
+    "stale_remote_nonzero_increment_rows": 0
+  }
+}

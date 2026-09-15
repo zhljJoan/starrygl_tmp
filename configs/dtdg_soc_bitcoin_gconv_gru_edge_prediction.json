@@ -1,0 +1,50 @@
+{
+  "data": {
+    "source": "${STARRYGL_DATA_ROOT}/starrygl/soc-bitcoin",
+    "temporal_representation": "snapshot_sequence"
+  },
+  "backbone": {
+    "name": "gconv_gru",
+    "in_dim": 2,
+    "hidden_dim": 16,
+    "out_dim": 2,
+    "temporal_representation": "snapshot_sequence",
+    "spatial_aggregation": "full_neighbor",
+    "coupling": "coupled",
+    "state": "snapshot_recurrent"
+  },
+  "task": {
+    "name": "edge_prediction",
+    "services": {
+      "negative_sampling": {
+        "ratio": 1,
+        "mode": "dst",
+        "train": {"policy": "random", "local_probability": 0.9, "remote_probability": 0.1},
+        "eval": {"policy": "random"},
+        "test": {"policy": "random"}
+      }
+    }
+  },
+  "runtime": {
+    "temporal_state": {"consistency": "exact", "max_staleness": 0},
+    "sampling": {
+      "mode": "full",
+      "window": {
+        "policy": "chunk_decay",
+        "snaps_count": 8,
+        "chunk_decay": [87, 59, 41, 28, 19, 13],
+        "num_full_snapshots": 2,
+        "chunk_order": "rand"
+      }
+    },
+    "preprocess": {
+      "partition_backend": "speed_partition",
+      "chunks_per_rank": 128,
+      "target_batch_size": 600000,
+      "profile_prepare": true
+    },
+    "gradient_sync": "ddp",
+    "ddp_static_graph": true,
+    "train": {"batch_size": 600000, "epochs": 30, "lr": 0.001}
+  }
+}

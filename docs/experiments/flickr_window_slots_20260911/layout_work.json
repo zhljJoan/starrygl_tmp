@@ -1,0 +1,90 @@
+{
+  "dcrnn": {
+    "exact": [
+      {
+        "rank": 0,
+        "snapshots": 70,
+        "destination_rows": 66378200,
+        "source_rows": 74558157,
+        "incoming_edges": 192474837,
+        "outgoing_edges": 187266347
+      },
+      {
+        "rank": 1,
+        "snapshots": 70,
+        "destination_rows": 94826550,
+        "source_rows": 102594544,
+        "incoming_edges": 175969328,
+        "outgoing_edges": 181177818
+      }
+    ],
+    "cache": [
+      {
+        "rank": 0,
+        "snapshots": 70,
+        "destination_rows": 75833520,
+        "source_rows": 87000658,
+        "incoming_edges": 337360565,
+        "outgoing_edges": 339379941
+      },
+      {
+        "rank": 1,
+        "snapshots": 70,
+        "destination_rows": 101491670,
+        "source_rows": 109099970,
+        "incoming_edges": 349963188,
+        "outgoing_edges": 351339461
+      }
+    ],
+    "cache_to_exact_ratio": {
+      "destination_rows": 1.0999997828848096,
+      "source_rows": 1.106958160350036,
+      "incoming_edges": 1.865476015884252,
+      "outgoing_edges": 1.8746921992915806
+    }
+  },
+  "gconv_gru": {
+    "exact": [
+      {
+        "rank": 0,
+        "snapshots": 70,
+        "destination_rows": 66378200,
+        "source_rows": 72422396,
+        "incoming_edges": 192474837,
+        "outgoing_edges": 0
+      },
+      {
+        "rank": 1,
+        "snapshots": 70,
+        "destination_rows": 94826550,
+        "source_rows": 100319148,
+        "incoming_edges": 175969328,
+        "outgoing_edges": 0
+      }
+    ],
+    "cache": [
+      {
+        "rank": 0,
+        "snapshots": 70,
+        "destination_rows": 75833520,
+        "source_rows": 83465701,
+        "incoming_edges": 337360565,
+        "outgoing_edges": 0
+      },
+      {
+        "rank": 1,
+        "snapshots": 70,
+        "destination_rows": 101491670,
+        "source_rows": 106473705,
+        "incoming_edges": 349963188,
+        "outgoing_edges": 0
+      }
+    ],
+    "cache_to_exact_ratio": {
+      "destination_rows": 1.0999997828848096,
+      "source_rows": 1.0995583436489371,
+      "incoming_edges": 1.865476015884252,
+      "outgoing_edges": 0.0
+    }
+  }
+}

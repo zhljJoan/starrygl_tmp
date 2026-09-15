@@ -1,0 +1,7 @@
+{
+  "status": "stopped_redundant_noop_check",
+  "compared_with": "dcrnn_stale1_s42",
+  "matched_epochs": 4,
+  "max_train_mse_difference": 0.0,
+  "reason": "Current increment updates require locally produced shared-read nodes; shared reads are remote-only in this partition. All compared training losses match exactly. No final convergence result is claimed for this diagnostic run."
+}

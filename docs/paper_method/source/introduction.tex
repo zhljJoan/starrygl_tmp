@@ -1,0 +1,446 @@
+%1。第一段不讲分布式 1
+%2. 把分布式需求困境写到第三段 1
+%3. 邻居scope放在耦合前面 1
+%4. neighbor scope 强调针对GNN的传播图视野，一共6种场景 1
+%5. 现有工作瓶颈尝试改成按方法讨论 1
+%6. 第四段（2）（3）突出跟分布式的关系，第（2）强调通信和计算的异步/overlap 1
+%7. 第三点不讲图划分了，只讲Task和API 1
+%8. 三个视图和瓶颈的解释，为什么能解决，好处在哪。三个视图对比一个有更好的通用性，每一个视图怎么和时空chunk关联上。chunk怎么切的也放在第一个点。再写基于切好的chunk怎么提供三种视图。
+%9. chunk作为并行调度的粒度。
+%10. 第三点就从接口的角度， 加一个sg.compile解析模型参数确定分布式调度顺序的接口 ing。
+%实验部分To DO:
+%  (1) 切换成不同task + 模型的表格
+% （2）数据集不区分CTDG和DTDG
+% （3）先把默认形式的baseline补齐（DynaHB） ing
+% （4）效率换成收敛曲线/加单独epoch的耗时开销
+%。（5）切换task任务进行实验实验
+%。（6） Scalability
+
+%标题： 二级标题都大写，三级以下不大写，四级标题用斜体
+
+\section{Introduction}
+\label{sec:intro}
+
+%% 整体思路：动态图普遍存在，DGNN 广泛应用  → DGNN 内部差异大（三维分类）→ 现有系统碎片化 → 统一尝试失败 → 三大挑战 → StarryGL 解决
+
+% ------------------------------------------------------------
+% 1. 动态图普遍存在 + DGNN 成为主流分析范式
+% ------------------------------------------------------------
+Dynamic graphs, where nodes, edges, and their attributes evolve continuously over time, are ubiquitous in modern data management scenarios such as social interaction analysis~\cite{social1}, financial fraud detection~\cite{finan1}, recommendation systems~\cite{recommand1, recommand2}, and traffic forecasting~\cite{traffic2}. 
+Dynamic graph neural networks (DGNNs)~\cite{dgnn_dt1,dgnn_ct1} have emerged as a powerful tool to model such data, extending static GNNs by jointly modeling  {\em temporal evolutionary patterns} and {\em spatial topological dependencies}, and have demonstrated strong empirical performance on tasks such as node classification and regression~\cite{song2024dynahb}, link prediction~\cite{rossi2006temporal,zhou2022tgl,wang2024tglite}, and graph-level classification and regression~\cite{graph_cls1}. 
+
+% ------------------------------------------------------------
+% 2. DGNN 内部建模范式高度异构（三维设计空间）
+% ------------------------------------------------------------
+Despite their success, DGNNs exhibit extreme heterogeneity in how they structure computation.
+At their core, DGNNs must address two fundamental computations and their coupling~\cite{2stage1}:
+\emph{temporal state evolution}, which updates node, edge, or model states based on historical observations, and
+\emph{spatial neighborhood aggregation}, which propagates information over the relevant graph topology.
+The \emph{spatiotemporal coupling} strategy further specifies the execution order and data dependencies between these computation phases, particularly whether spatial aggregation consumes temporally evolved states. 
+Different instantiations of these components give rise to distinct DGNN modeling paradigms~\cite{mult_paradigm1}.
+
+The full DGNN design space can be characterized along three orthogonal dimensions:
+{\em (1) Temporal representation.} % distinguishes discrete-time dynamic graph (DTDG) from continuous-time dynamic graph (CTDG). 
+Discrete-time dynamic graph (DTDG)~\cite{mpnnlstm,dgnn_dt1} organizes graph evolution as a sequence of snapshots over discrete intervals, naturally supporting periodic analysis in social, economic, and transportation networks. 
+Continuous-time dynamic graph (CTDG)~\cite{dgnn_ct1,dyg} processes timestamped interaction events in chronological order and preserve fine-grained temporal information, making them suitable for applications such as transaction monitoring and online recommendation. 
+{\em (2) Spatial aggregation.} %distinguishes full-neighbor from sampled-neighbor aggregation. 
+Full-neighbor aggregation~\cite{evolvegcn, tgcn} computes over all eligible neighbors within a temporal scope, whereas sampled-neighbor aggregation~\cite{tgn,dgnn_ct1} restricts computation to a subset of target-specific neighbors, often for scalability.
+{\em (3) Spatiotemporal coupling.} % distinguishes decoupled from coupled designs. 
+Decoupled designs~\cite{ctdg_decouple} schedule temporal evolution and spatial aggregation independently, while coupled designs~\cite{tgn} require spatial aggregation to operate on states produced by preceding temporal computations.
+
+% ------------------------------------------------------------
+% 3. 系统层面的核心矛盾：泛化性 vs. 效率, 现有系统支持碎片化
+% ------------------------------------------------------------
+These orthogonal choices induce highly divergent data access patterns, execution orders, and synchronization requirements, complicating unified runtime support for diverse DGNN paradigms~\cite{mult_paradigm1}. 
+The challenge intensifies at scale: industrial graphs often encompass billions of nodes and terabytes of temporal features~\cite{zhou2023disttgl,sheng2024mspipe}, with real-world streams generating millions of events per second. 
+Distributed training is thus indispensable~\cite{huangflaredtdg,zhou2023disttgl}.
+%
+However, existing distributed frameworks optimize for narrow subspaces of the design space, as summarized in Table~\ref{tab:system_comparison}, resulting in a \emph{fragmented landscape}. 
+Deploying new variants often requires rebuilding data loaders, schedulers, and communication stacks from scratch. 
+%
+Current systems fall into two broad categories: 
+\emph{(1) Snapshot-centric DTDG systems.}
+Frameworks such as DynaGraph~\cite{guan2022dynagraph}, ESDG~\cite{chakaravarthy2021efficient}, and SWASH~\cite{song2025swash} target snapshot-sequence workloads. 
+They excel at snapshot partitioning, batched computation, and cross-snapshot state reuse, but are fundamentally ill-suited for fine-grained event-stream processing.
+%
+\emph{(2) Event-centric CTDG systems.}
+Systems like TGL/DistTGL~\cite{zhou2022tgl,zhou2023disttgl}, GNNFlow~\cite{zhong2023gnnflow}, and MSPipe~\cite{sheng2024mspipe} specialize in temporal-neighbor sampling and streaming execution.
+They aggressively optimize caching, communication-computation pipelining, and memory-based state management, yet lack native support for snapshot-wide full-neighbor aggregation.
+%
+Crucially, \emph{no existing distributed DGNN framework natively covers the full design space of temporal representation, spatial aggregation, and spatiotemporal coupling}.
+Practitioners must maintain multiple, incompatible system stacks and task-specific pipelines, incurring substantial engineering overhead and hindering the adoption of DGNNs at scale.
+
+\input{table/table1_DGsupport}
+
+% ------------------------------------------------------------
+% 3. 统一尝试失败：仅接口层统一，无法支撑分布式执行
+% ------------------------------------------------------------
+Recent work like TGM~\cite{chmura2025tgm} introduces unified APIs to express both DTDG and CTDG models. 
+However, this abstraction operates strictly at the \emph{programming interface layer}; it retains model-specific storage and execution engines, ignoring underlying data management challenges. 
+Crucially, TGM is a \emph{single-machine} system. 
+By assuming centralized data access and serial execution, it overlooks core distributed requirements: partitioned data ownership, state consistency, dependency-aware scheduling, and communication-computation overlap. 
+Consequently, it fails to scale to industrial workloads or support diverse DGNN execution paradigms.
+
+% ------------------------------------------------------------
+% 4. 统一分布式系统的三大挑战
+% ------------------------------------------------------------
+% A common distributed substrate spanning data organization, execution, and task programming enables DGNN models to reuse the same data and runtime infrastructure, reducing duplicated data pipelines and model-specific distributed implementations. Building such a substrate requires addressing three challenges. 
+Building a unified distributed DGNN framework requires addressing three core challenges:
+%
+\textbf{(1) Unified data abstraction.} 
+Different DGNN paradigms impose conflicting data organizations and access patterns. 
+Snapshot-sequence models with full-neighbor aggregation require partition-friendly adjacency layouts and boundary exchanges, while event-stream models with sampled-neighbor aggregation demand chronological indexing and on-demand fetching of remote features and states. 
+A unified storage layer must support both patterns under a coherent ownership and routing mechanism.
+%
+\textbf{(2) Dependency-aware parallel execution.} 
+Spatiotemporal coupling determines distributed dependency and scheduling requirements.
+Decoupled models allow temporal and spatial computations to be scheduled separately, enabling batching and communication-computation overlap. 
+Coupled models require spatial aggregation to consume states produced by preceding temporal computations, introducing cross-worker state dependencies. 
+A unified runtime must support both latency-tolerant parallel pipelines and precise, dependency-aware state synchronization.
+%
+\textbf{(3) Generalized distributed interfaces.} 
+In existing systems, temporal representation, spatial aggregation strategy, coupling mode, and task semantics are hard-coded into storage and communication stacks. 
+Most frameworks support downstream tasks only within their targeted model families. 
+A true substrate requires clean abstractions that decouple task semantics from distributed orchestration, enabling high-level composition over reusable components.
+
+% ------------------------------------------------------------
+% 5. StarryGL 解决
+% ------------------------------------------------------------
+This paper presents \textbf{StarryGL}, the first distributed DGNN framework unifying the full design space of temporal representation, spatial aggregation, and spatiotemporal coupling. 
+Its core is the \emph{Spatio-Temporal Chunk (STC)}, a novel abstraction partitioning dynamic graphs along both temporal intervals and spatial entity sets, serving as the atomic unit for storage, scheduling, and communication.
+Built upon STCs, StarryGL integrates three core modules:
+(1) a \emph{STC indexed unified data organization} that eliminates paradigm-specific storage engines by organizing all dynamic graph data under a shared STC catalog.
+(2) a \emph{coupling-aware distributed executor} that dynamically adapts scheduling and synchronization to support both pipeline-friendly decoupled and consistency-critical coupled models.
+and (3) a \emph{generalized execution plan inferface} that captures high-level GNN semantics and coordinates optimized storage, scheduling, communication and synchronization, enabling rapid prototyping of new DGNN variants without systems re-engineering.
+%maps high-level DGNN semantics to optimized execution plans, enabling rapid prototyping of new DGNN variants without systems re-engineering.
+% Built upon STCs, StarryGL integrates three core modules:
+% (1) a \emph{chunk-indexed multi-view store} that eliminates paradigm-specific storage engines by organizing all dynamic graph data under a shared STC catalog.
+% (2) a \emph{dependency-aware chunk execution} that dynamically adapts scheduling and synchronization to support both pipeline-friendly decoupled and consistency-critical coupled models.
+% and (3) a \emph{generalized lowering interface} that maps high-level DGNN semantics to optimized execution plans, enabling rapid prototyping of new DGNN variants without systems re-engineering.
+
+In summary, this paper makes the following contributions:
+
+\begin{itemize}
+    \item We formalize the generality-efficiency trade-off in distributed DGNN training, attributing the fragmented DGNN systems landscape to fundamental differences in data access and execution dependencies arising from temporal representation, spatial aggregation, and spatiotemporal coupling choices.
+
+    \item We propose the Spatio-Temporal Chunk (STC), a unified abstraction that serves as the atomic unit for storage, computation, and communication, effectively reconciling snapshot/event paradigms, full/sampled aggregation, and coupled/decoupled execution within a single runtime.
+
+    \item We operationalize STC in StarryGL, a distributed DGNN framework built on three core modules: a multi-view store, a coupling-aware executor, and an execution plan interface decoupling plan specification from execution.
+    StarryGL is the first system to cover the full DGNN design space, eliminating the engineering tax of maintaining disparate stacks while matching specialized engine performance.
+ 
+     \item We evaluate StarryGL on eight real-world dynamic graphs across seven representative models. 
+    Results demonstrate that StarryGL achieves comparable or superior accuracy and throughput to state-of-the-art specialized systems across multiple tasks, while uniquely supporting flexible cross-paradigm configurations in a single runtime.
+
+\end{itemize}
+
+\begin{comment} %% Older version before 20260718
+\section{Introduction}
+\label{sec:intro}
+
+%% 整体思路：动态图普遍存在，DGNN 广泛应用  → DGNN 内部差异大（三维分类）→ 现有系统碎片化 → 统一尝试失败 → 三大挑战 → StarryGL 解决
+
+
+%% 动态图普遍存在，DGNN 广泛应用
+Dynamic graphs, where nodes, edges, and their attributes evolve continuously over time, are ubiquitous in modern data management scenarios such as social interaction analysis~\cite{social1}, financial fraud detection~\cite{finan1}, recommendation systems~\cite{recommand1, recommand2}, and traffic forecasting~\cite{traffic2}. 
+Dynamic graph neural networks (DGNNs)~\cite{dgnn_dt1,dgnn_ct1} have emerged as a powerful tool to model such data, extending static GNNs by jointly modeling {\em spatial topological dependencies} and {\em temporal evolutionary patterns}, and have demonstrated strong empirical performance on tasks such as node classification and regression~\cite{song2024dynahb}, link prediction~\cite{rossi2006temporal,zhou2022tgl,wang2024tglite}, and graph-level classification and regression~\cite{graph_cls1}. 
+As the DGNN literature has advanced, a proliferation of modeling paradigms has emerged. 
+This diversity, however, complicates system-level support: different DGNN models impose fundamentally different requirements on data organization, execution order, and distributed coordination, making it difficult to serve them efficiently within a single runtime~\cite{mult_paradigm1}.
+
+%% DGNN 内部差异大（三维分类）
+Despite their architectural diversity, most DGNNs adhere to a standard spatiotemporal computation workflow composed of two core computations and their coupling~\cite{2stage1}  . 
+{\em Temporal state evolution} updates node, edge, or model states based on historical observations, while {\em spatial neighborhood aggregation} propagates information over the relevant graph topology. 
+{\em Spatiotemporal coupling} specifies the execution order and data dependencies between these computation phases, particularly whether spatial aggregation consumes temporally evolved states. Different instantiations of these components give rise to distinct DGNN modeling paradigms.
+%
+From a systems perspective, these paradigms can be organized along three orthogonal design dimensions.
+{\em (1) Temporal representation dimension} distinguishes discrete-time dynamic graph (DTDG) from continuous-time dynamic graph (CTDG). 
+DTDG~\cite{mpnnlstm,dgnn_dt1}   organizes graph evolution as a sequence of snapshots over discrete intervals, naturally supporting periodic analysis in social, economic, and transportation networks. 
+CTDG~\cite{dgnn_ct1,dyg} processes timestamped interaction events in chronological order and preserve fine-grained temporal information, making them suitable for applications such as transaction monitoring and online recommendation. 
+{\em (2) Spatial aggregation dimension} distinguishes full-neighbor from sampled-neighbor aggregation. 
+Full-neighbor aggregation~\cite{evolvegcn, tgcn} computes over all eligible neighbors within a temporal scope, whereas sampled-neighbor aggregation~\cite{tgn,dgnn_ct1} restricts computation to a subset of target-specific neighbors, often for scalability.
+{\em (3) Spatiotemporal coupling dimension} distinguishes decoupled from coupled designs. 
+Decoupled designs~\cite{ctdg_decouple} schedule temporal evolution and spatial aggregation independently, while coupled designs~\cite{tgn} require spatial aggregation to operate on states produced by preceding temporal computations.
+
+%% 现有系统碎片化
+As real-world dynamic graphs increasingly exceed the memory and computational capacity of a single machine, distributed training infrastructures for DGNNs have become essential~\cite{huangflaredtdg,zhou2023disttgl}. 
+However, existing distributed DGNN frameworks specialize their storage layouts, execution engines, and communication mechanisms for narrow regions of this design space, resulting in fragmented system support, as summarized in Table~\ref{tab:system_comparison}.
+%
+Existing systems can be broadly divided into snapshot-centric DTDG systems and event-centric CTDG systems. 
+DTDG systems such as DynaGraph\cite{guan2022dynagraph}, ESDG\cite{chakaravarthy2021efficient}, and SWASH\cite{song2025swash} target snapshot-sequence workloads with either full- or sampled-neighbor aggregation and decoupled or coupled execution. 
+They exploit snapshot partitioning, batched graph computation, and cross-snapshot state reuse, but are ill-suited for fine-grained event-stream dynamic graph processing. 
+CTDG systems such as TGL\cite{zhou2022tgl}/DistTGL\cite{zhou2023disttgl} and GNNFlow\cite{zhong2023gnnflow} focus on sampled-neighbor execution over temporal event streams under both coupled and decoupled settings, while MSPipe\cite{sheng2024mspipe} specializes in coupled, memory-based event-stream models. 
+These systems optimize temporal-neighbor sampling, distributed feature and state access, caching, synchronization, and communication-computation pipelining, yet lack native support for snapshot-wide full-neighbor propagation. 
+%
+Consequently, {\em no existing distributed DGNN framework natively covers the full design space of temporal representation, spatial aggregation, and spatiotemporal coupling.} 
+Applications that use different DGNN modeling paradigms must maintain multiple system stacks and task-specific pipelines, incurring substantial engineering and maintenance overhead.
+
+\input{table/table1_DGsupport}
+
+%% 统一尝试失败
+Recent efforts have attempted to bridge this gap. 
+TGM\cite{chmura2025tgm} introduces shared temporal graph abstractions, unified data access interfaces, reusable operators, and task APIs for both CTDG and DTDG models, establishing a common programming pipeline for expressing diverse DGNN models. 
+However, this unification primarily concerns the programming interface layer. 
+It does not provide workload-specific execution mechanisms and leaves underlying storage formats, execution models, and parallel runtimes unchanged. 
+%
+More importantly, TGM is a single-machine system. 
+When graph structures, features, and temporal states are partitioned across workers, different DGNN modeling paradigms require coordinated mechanisms for data ownership, remote access, communication, state consistency, and dependency-aware scheduling. 
+These distributed system requirements are outside the scope of TGM.
+
+%% 构建分布式统一框架的三大挑战
+% A common distributed substrate spanning data organization, execution, and task programming enables DGNN models to reuse the same data and runtime infrastructure, reducing duplicated data pipelines and model-specific distributed implementations. Building such a substrate requires addressing three challenges. 
+Building a truly unified, distributed DGNN training framework requires addressing three core systems challenges:
+%
+\textbf{(1) Unified data abstraction.} 
+Different DGNN paradigms impose conflicting spatiotemporal data organizations and access patterns. 
+Snapshot-sequence models with full-neighbor aggregation require snapshot-oriented adjacency layouts and structured boundary exchange, while event-stream models with sampled-neighbor aggregation demand chronological event access, temporal adjacency indexing, and on-demand retrieval of distributed features and states. 
+A unified storage layer must support both patterns under a coherent ownership and routing mechanism.
+%
+\textbf{(2) Dependency-aware parallel execution.} 
+Spatiotemporal coupling determines distributed dependency and scheduling requirements.
+Decoupled models allow temporal and spatial computations to be scheduled separately, enabling batching and communication-computation overlap. 
+Coupled models require spatial aggregation to consume states produced by preceding temporal computations, introducing cross-worker state dependencies. 
+A unified runtime must therefore support both latency-tolerant parallel pipelines and precise, dependency-aware state synchronization.
+%
+\textbf{(3) Generalized distributed interfaces.} 
+In existing systems, temporal representation, spatial aggregation strategy, coupling mode, and task semantics are deeply embedded into storage layouts, communication protocols, and execution schedulers. 
+As shown in Table~\ref{tab:system_comparison}, most frameworks support downstream tasks only within their targeted model families. 
+Extending coverage typically requires invasive changes to the distributed pipeline rather than high-level composition of reusable components.
+
+%% StarryGL 解决
+In this paper, we present \textbf{StarryGL}, a distributed training framework designed to unify the DGNN design space from the ground up. 
+The key insight behind StarryGL is the Spatio-Temporal Chunk (STC) abstraction: 
+a two-dimensional logical unit that partitions dynamic graphs jointly along contiguous temporal intervals and spatial entity sets. 
+Analogous to blocks in relational storage or partitions in distributed dataflow systems, an STC serves simultaneously as the unit of data organization storage, scheduling, computation, synchronization, and communication. 
+This design allows StarryGL to encapsulate radically different DGNN workloads, including snapshot-based and stream-based models, full-graph and sampled aggregations, and decoupled and coupled execution strategies, within a single distributed runtime.
+
+Our main contributions are as follows:
+% Based on the STC abstraction, StarryGL makes the following contributions:
+
+\begin{itemize}
+
+    \item \textbf{Unified spatiotemporal-chunk storage.}
+    We design a chunk-indexed multi-view store that organizes
+    dynamic graph data under a shared catalog of spatiotemporal
+    chunks. Event, T-CSR, and Snapshot-CSC views, together with
+    chunk-level ownership and routing metadata, support chronological
+    event access, sampled temporal neighborhood retrieval, and
+    full-neighbor aggregation within a common distributed data
+    infrastructure.
+
+    \item \textbf{Dependency-aware chunk execution.}
+    We design a chunk-oriented runtime that coordinates computation,
+    communication, and synchronization according to the
+    spatiotemporal coupling of each model. It uses layer-wise chunk
+    coroutines to overlap communication with computation for
+    decoupled models and provides exact or bounded-staleness state
+    synchronization for coupled models.
+
+    \item \textbf{Generalized distributed DGNN interface.}
+    We provide composable abstractions for temporal state evolution,
+    spatial neighborhood aggregation, spatiotemporal coupling, and
+    downstream tasks. The compilation interface maps these
+    abstractions to storage views, distributed data dependencies,
+    communication operations, and chunk-level execution plans.
+
+    \item \textbf{Comprehensive evaluation.}
+    We evaluate StarryGL on eight real-world dynamic graphs with
+    up to 24.6 million nodes and 191.3 million edges, covering four
+    CTDG models, three DTDG models, and multiple node- and edge-level
+    prediction tasks. StarryGL supports DGNN configurations not
+    natively covered by the compared specialized systems. The
+    evaluation compares prediction quality, training throughput,
+    and multi-GPU scalability with the corresponding baselines.
+    Results demonstrate that StarryGL achieves comparable or superior accuracy and throughput to state-of-the-art specialized systems across multiple tasks, while successfully unifying the distributed training paradigms.
+\end{itemize}
+
+\end{comment}
+
+
+\begin{comment} Older draft version.
+Dynamic graph neural networks (DGNNs) model evolving relational data by jointly capturing graph topology and temporal evolution. They have been widely applied to social interaction analysis, financial fraud detection, recommendation, and traffic forecasting, where both relational structures and entity behaviors evolve over time. Existing DGNNs commonly adopt one of two temporal representations. Continuous-time dynamic graph (CTDG) models process timestamped interactions in chronological order and preserve fine-grained temporal information, making them suitable for applications such as transaction monitoring and online recommendation. Discrete-time dynamic graph (DTDG) models instead organize graph evolution as a sequence of snapshots over discrete intervals, naturally supporting periodic analysis in social, economic, and transportation networks. As the field has advanced, a growing number of CTDG and DTDG models have been proposed. The resulting proliferation of modeling paradigms has made unified and efficient system support increasingly difficult.
+
+Despite their architectural diversity, most DGNNs share a common spatiotemporal computation workflow comprising two core computations and the coupling between them. \textbf{Temporal state evolution} updates node, edge, or model states based on historical observations, while \textbf{spatial neighborhood aggregation} propagates information over the relevant graph topology. \textbf{Spatiotemporal coupling} specifies the execution order and data dependencies between these computations, particularly whether spatial aggregation consumes temporally evolved states. Different ways of instantiating and coordinating these components give rise to distinct DGNN modeling paradigms.
+
+From a systems perspective, these variations define three conceptually orthogonal design dimensions. The \textbf{temporal representation} dimension distinguishes discrete-time snapshot sequences from continuous-time event streams. The \textbf{spatial aggregation} dimension distinguishes full-neighbor aggregation over all eligible neighbors within a temporal unit from sampled-neighbor aggregation over target-specific neighborhoods. The \textbf{spatiotemporal coupling} dimension distinguishes decoupled designs, in which temporal evolution and spatial aggregation can be scheduled separately, from coupled designs, in which spatial aggregation depends on states produced by preceding temporal computations. 
+
+As real-world dynamic graphs increasingly exceed the memory and computational capacity of a single machine, training DGNNs over this design space requires scalable distributed infrastructure. A number of distributed DGNN frameworks have therefore been developed. However, different DGNN paradigms exhibit distinct data-access patterns, computation structures, communication mechanisms, and dependency requirements. Existing frameworks consequently specialize their storage and execution designs for limited regions of the design space, resulting in fragmented system support.
+Existing systems can be broadly divided into snapshot-centric DTDG systems and event-centric CTDG systems. DTDG systems such as DynaGraph, ESDG, and SWASH target snapshot-sequence workloads with sampled- or full-neighbor aggregation and decoupled or coupled execution, as summarized in Table~\ref{tab:system_comparison}. They exploit snapshot partitioning, batched graph computation, and reuse across consecutive snapshots, but are not designed for fine-grained event-stream processing. CTDG systems such as TGL/DistTGL and GNNFlow support sampled-neighbor execution over event streams under both coupled and decoupled settings, while MSPipe focuses on coupled, memory-based event-stream models. Their optimizations center on temporal-neighbor sampling, distributed feature and state access, caching, synchronization, and communication--computation pipelining, but do not directly support snapshot-wide full-neighbor propagation. No existing distributed framework natively covers all combinations of temporal representation, spatial aggregation, and spatiotemporal coupling. Applications that use models from different regions of the design space must therefore maintain multiple system stacks and task-specific pipelines, increasing development and maintenance costs.
+
+Recent work has explored unified support for heterogeneous DGNN paradigms. TGM takes an important step by providing shared temporal-graph abstractions, unified data-access interfaces, reusable operators, model components, and task APIs for both CTDG and DTDG models. These abstractions establish a common logical and programming pipeline for expressing diverse DGNN models and downstream tasks. However, the unification primarily concerns the programming stack and does not provide workload-specific distributed execution mechanisms. More importantly, TGM is limited to single-machine execution. When graph structures, features, and temporal states are partitioned across workers, different DGNN paradigms require coordinated mechanisms for data ownership, remote access, communication, state consistency, and dependency-aware scheduling. These distributed system requirements are outside the scope of TGM.
+
+A common distributed substrate spanning data organization, execution, and task programming enables DGNN models to reuse the same data and runtime infrastructure, reducing duplicated data pipelines and model-specific distributed implementations. Building such a substrate requires addressing three challenges. \textbf{First, heterogeneous DGNN paradigms require different spatiotemporal data organizations and access paths.} Event-stream models with sampled-neighbor aggregation require chronological event access, temporal adjacency indexes, and on-demand retrieval of distributed features and states. Snapshot-sequence models with full-neighbor aggregation instead require snapshot-oriented adjacency layouts and structured boundary exchange. A common storage layer must expose both access patterns under shared ownership and routing mechanisms.
+\textbf{Second, spatiotemporal coupling determines distributed dependency and scheduling requirements.} Decoupled models allow temporal and spatial computations to be scheduled separately, enabling batching and communication--computation overlap. Coupled models require spatial aggregation to consume states produced by preceding temporal computations, introducing cross-worker state dependencies. The runtime must therefore support both parallel execution pipelines and dependency-aware state synchronization.
+\textbf{Third, existing systems tightly couple DGNN components and downstream tasks with distributed execution policies.} Temporal representation, spatial aggregation, spatiotemporal coupling, and task semantics are directly encoded into storage layouts, communication protocols, and execution schedulers. As reflected by the task-interface column in Table~\ref{tab:system_comparison}, most frameworks support downstream tasks only within their targeted model families. Consequently, adding a new DGNN paradigm or prediction task often requires modifying the distributed pipeline rather than composing reusable model and task components.
+
+To address these challenges, we present \textbf{StarryGL}, a unified framework for distributed DGNN training. StarryGL is built around the \textbf{Spatiotemporal Chunk}, a two-dimensional physical unit defined by a spatial node region and a contiguous temporal interval. Chunks serve as the common granularity for data organization, communication, synchronization, and computation, allowing heterogeneous DGNN configurations to be represented and scheduled through a shared distributed infrastructure.
+Our main contributions are as follows:
+\begin{itemize}
+
+    \item \textbf{Unified spatiotemporal-chunk storage.}
+    We design a chunk-indexed multi-view store that organizes
+    dynamic-graph data under a shared catalog of spatiotemporal
+    chunks. Event, T-CSR, and Snapshot-CSC views, together with
+    chunk-level ownership and routing metadata, support chronological
+    event access, sampled temporal-neighborhood retrieval, and
+    full-neighbor aggregation within a common distributed data
+    infrastructure.
+
+    \item \textbf{Dependency-aware chunk execution.}
+    We design a chunk-oriented runtime that coordinates computation,
+    communication, and synchronization according to the
+    spatiotemporal coupling of each model. It uses layer-wise chunk
+    coroutines to overlap communication with computation for
+    decoupled models and provides exact or bounded-staleness state
+    synchronization for coupled models.
+
+    \item \textbf{Generalized Distributed DGNN Interface.}
+    We provide composable abstractions for temporal state evolution,
+    spatial neighborhood aggregation, spatiotemporal coupling, and
+    downstream tasks. The compilation interface maps these
+    abstractions to storage views, distributed data dependencies,
+    communication operations, and chunk-level execution plans.
+
+    \item \textbf{Comprehensive evaluation.}
+    We evaluate StarryGL on eight real-world dynamic graphs with
+    up to 24.6 million nodes and 191.3 million edges, covering four
+    CTDG models, four DTDG models, and multiple node- and edge-level
+    prediction tasks. StarryGL supports DGNN configurations not
+    natively covered by the compared specialized systems. The
+    evaluation compares prediction quality, training throughput,
+    and multi-GPU scalability with the corresponding baselines.
+\end{itemize}
+
+\end{comment}
+
+\begin{comment} %% Older version before 20260712
+    
+%Dynamic graph neural networks (DGNNs) have emerged as an effective methodology for modeling time-evolving data in domains such as social networks\cite{}, financial fraud detection\cite{}, recommendation systems\cite{}, and traffic forecasting\cite{}. Unlike static graphs, dynamic graphs exhibit continuous changes in topological structure, requiring models to capture not only structural dependencies but also temporal dependencies across interactions. Despite this shared application landscape, DGNNs have diverged into two dominant modeling paradigms that differ fundamentally in how they represent temporal information. Continuous-time dynamic graphs (CTDGs) model interactions as a stream of timestamped events, making them well-suited for applications requiring fine-grained temporal resolution, such as fraud detection and real-time recommendation. Discrete-time dynamic graphs (DTDGs) represent the graph as a sequence of snapshots aggregated over regular intervals, naturally aligned with applications like daily social network analysis or monthly economic monitoring. While both paradigms serve important and often overlapping application domains, their distinct temporal representation leads to substantially different data organization and processing requirements. However, the rapid proliferation of DGNN modeling patterns has made it increasingly difficult to provide unified and efficient system support.
+
+%While both paradigms serve important and often overlapping application domains, their distinct temporal representation leads to substantially different data organization and processing requirements.
+
+%Unlike static graphs, dynamic graphs introduce a dual complexity: spatial dependencies that span graph topologies and temporal dependencies that govern how those graph structures and node states evolve. Efficiently managing, storing, and computing over such spatiotemporally correlated data at scale remains an open systems problem. From a systems perspective, DGNN training is not a monolithic workload. Across existing models, we observe a broad design space characterized by three orthogonal dimensions. These dimensions arise from three common semantic aspects of DGNN computation: \textbf{temporal state evolution}, which updates node, edge, or model states from historical observations; spatial neighborhood aggregation, which gathers and transforms information from graph neighbors; and spatiotemporal coupling, which determines the execution order and data dependencies between temporal evolution and spatial aggregation. Different DGNNs instantiate these aspects differently, giving rise to substantially different modeling and execution patterns.
+ 
+%Nevertheless, both paradigms ultimately solve the same underlying spatio-temporal learning problem. Despite their different temporal representations, most DGNNs share a common spatio-temporal computation pattern: each node representation is updated using both its temporal context, captured through the evolution of node states over time, and its spatial context, captured through neighborhood aggregation. The diversity of DGNN architectures primarily arises from how this common computation pattern is instantiated along three dimensions. Specifically, \textbf{temporal organization} distinguishes event-stream computation, where graph evolution is presented as \textit{timestamped events}, from \textit{snapshot-sequence} computation, where it is presented as discrete graph snapshots. \textbf{Spatial computation scope} distinguishes \textit{neighbor sampling}, which gathers spatial information from sampled neighbors of target nodes, from \textit{snapshot-wide propagation}, which operates over all nodes and edges within an individual snapshot. Finally, \textbf{state dependency} distinguishes \textit{stateful execution}, where spatial aggregation consumes temporal states produced by preceding temporal computations, from \textit{staged execution}, where spatial and temporal computations can be performed separately.
+
+%Recent work has recognized that the common computational structure underlying CTDG and DTDG models creates opportunities for shared infrastructure. TGM takes an important first step by providing a modular single-machine library that unifies temporal data structures, model components, and task interfaces across both paradigms, including common interfaces for different prediction tasks. Its scope, however, remains limited to a single machine. Extending these abstractions to distributed execution is non-trivial. Once graph data and temporal states are partitioned across workers, different DGNN design choices require different storage organizations, communication patterns, and execution policies.
+
+% To address the scalability limitations of single-machine DGNN training, prior work has developed specialized distributed systems for both paradigms. CTDG systems partition temporal graphs and construct event-centric subgraphs through temporal neighbor sampling. When sampled neighbors or temporal states reside on remote partitions, workers incur remote data access and state synchronization. Existing systems reduce this overhead through partitioning that minimizes remote neighbor accesses, request deduplication, and caching of remote node states with bounded staleness, while hiding the remaining latency through pipelining. 
+% %DTDG得内容有点空
+% DTDG systems instead partition snapshot sequences across spatial, temporal, or joint spatio-temporal dimensions. When propagation spans spatial partitions or consecutive snapshots require temporal states from different workers, distributed execution incurs communication for boundary embeddings or temporal state transfers. Existing systems reduce these costs by colocating complete snapshot windows or frequently accessed graph partitions on the same worker to avoid fine-grained communication, applying workload-aware joint spatio-temporal partitioning to balance workloads while preserving locality, and using temporal-state reuse or stale-state caching to reduce synchronization frequency.
+% Although effective for their target workloads, these systems support only particular combinations of DGNN modeling choices. As summarized in Table~\ref{tab:system_comparison}, existing distributed frameworks are typically specialized for particular temporal organizations, spatial computation scopes, and state-dependency patterns. Beyond model execution, frameworks also differ in whether they provide a common task interface reusable across node- and edge-level prediction.
+
+% Supporting these combinations within a common distributed framework is challenging because different DGNN design choices impose heterogeneous requirements on the system stack.
+% \textbf{First, temporal organization and spatial computation scope jointly determine the physical organization and distributed access paths of graph data.}
+% Temporal organization determines whether the store must support chronological event-level access or structured access to sequences of graph snapshots. Spatial computation scope further determines how each temporal unit is accessed: neighbor-sampling workloads require temporal adjacency indexes to construct computation subgraphs and locate sampled features and states across partitions, whereas snapshot-wide propagation requires snapshot-oriented adjacency layouts and routing metadata for exchanging boundary embeddings across workers. Consequently, a fixed physical layout and access path optimized for one combination may be inefficient for another.
+% \textbf{Second, state dependency creates fundamentally different trade-offs between parallelism and state consistency.}
+% Staged models expose communication and computation that can be safely batched, pipelined, and overlapped without altering model semantics. Stateful models, however, require spatial aggregation to consume states produced by preceding computations. Workers must therefore either wait for remote state synchronization to preserve exact dependencies, placing communication on the critical path, or proceed with stale states to increase parallelism at the potential cost of prediction accuracy. A unified runtime must therefore adapt its synchronization and scheduling policies to the dependency and consistency requirements of each model.
+% \textbf{Finally, existing systems tightly couple DGNN components and downstream tasks with distributed execution policies.}
+% Temporal organization, spatial computation scope, state dependency, and task logic are directly encoded into storage layouts, communication protocols, and execution schedulers. Consequently, supporting a new DGNN paradigm or prediction task often requires redesigning the underlying distributed pipeline rather than simply composing existing model and task components.
+
+% To address these challenges, we present StarryGL, a unified library for distributed DGNN training. StarryGL organizes its system stack around the \textbf{Spatiotemporal Chunk}, a common physical unit defined by a spatial node region and a contiguous temporal interval. By using chunks as the shared scope for storage, communication, and execution, StarryGL supports heterogeneous DGNN workloads within a distributed runtime. Our contributions are as follows:
+% \begin{itemize}
+%     \item \textbf{Unified spatiotemporal-chunk store.}
+%     We introduce a chunk-indexed multi-view physical store that organizes heterogeneous DGNN data under a shared catalog of spatiotemporal chunks. Through Event, T-CSR, and Snapshot-CSC views augmented with chunk-level routing metadata, the store efficiently supports heterogeneous temporal and spatial access patterns within a single distributed substrate.
+    
+%     \item \textbf{Dependency-aware chunk execution.}
+%     We introduce a chunk-oriented runtime that adapts communication and scheduling to model state dependency. It uses layer-wise coroutines to overlap communication with computation for staged models, while supporting exact or bounded-staleness synchronization for stateful models under different consistency requirements.
+
+%     \item \textbf{Unified distributed DGNN framework.}
+%     We provide composable components that cover spatial aggregation, temporal state evolution, and downstream task support. Built on a common spatiotemporal-chunk storage and execution infrastructure, these components enable diverse DGNN model combinations without model-specific distributed pipelines.
+
+%     \item \textbf{Comprehensive evaluation.}
+%     We evaluate StarryGL on eight real-world datasets across representative CTDG and DTDG models and diverse tasks. StarryGL covers combinations unsupported by existing specialized systems while delivering competitive or superior prediction quality, throughput, and scalability.
+% \end{itemize}
+
+% \textbf{First, temporal organization and spatial computation scope impose heterogeneous requirements on graph partitioning and data access.}
+% Event-stream workloads require partitions that preserve temporal neighbor locality for irregular sampling and remote state retrieval, whereas snapshot-wide propagation requires partitions that balance graph computation and minimize boundary communication. A partitioning strategy optimized for one access pattern may therefore introduce excessive remote access, communication overhead, or workload imbalance for another.
+% \textbf{Second, state dependency determines how communication must be coordinated with computation.}
+% Stateful models require temporal states produced by preceding computations to be synchronized before dependent aggregation can proceed, whereas staged models expose greater opportunities for batching communication and overlapping it with computation. Therefore, a fixed execution strategy cannot efficiently support both execution patterns.
+% \textbf{Finally, existing systems tightly couple DGNN semantics and downstream tasks with low-level distributed policies.}
+% Such hardwired designs require substantial redesign when extending the framework to new temporal organizations, spatial scopes, state dependencies, or prediction tasks.
+%Supporting these combinations within a common distributed framework is challenging because different DGNN design choices impose heterogeneous requirements on data management, communication, and execution. \textbf{First, temporal organization and spatial computation scope determine how graph data and node states should be partitioned, stored, and accessed.} Event-stream workloads commonly require fine-grained temporal indexing and latency-sensitive accesses to sampled historical neighbors and evolving node states, whereas snapshot-wide propagation favors high-throughput access to all nodes and edges within each graph instance. A partitioning and storage design optimized for one access pattern may therefore be inefficient for the other. \textbf{Second, state dependency determines how communication must be coordinated with computation.} When spatial aggregation consumes temporal states produced by preceding computations, workers must preserve temporal order and exchange updated states before dependent computation can proceed. Staged models, in contrast, expose greater opportunities for batch communication and overlap it with computation. Efficiently supporting both patterns, therefore, requires execution policies that can adapt their synchronization and scheduling behavior. Existing systems instead embed these assumptions directly into their storage layouts, communication mechanisms, and schedulers, making their implementations difficult to reuse across different combinations of DGNN models.
+
+% To address these challenges, we present StarryGL, a unified distributed DGNN training library. StarryGL anchors its entire system stack on a single abstraction: \textbf{the Spatiotemporal Chunk}—an atomic physical unit for distributed storage, scheduling, and communication, defined by a spatial node partition and a contiguous temporal interval. This core abstraction fundamentally dismantles the aforementioned architectural conflicts. Our contributions are:
+% \begin{itemize}
+%     \item \textbf{Chunk-Indexed Multi-View Physical Store.} To overcome data access bottlenecks across heterogeneous DGNNs, we propose the Spatiotemporal Chunk as our foundational distributed data structure. Organized via two-stage streaming partitioning and temporal slicing, it dynamically supports multi-view layouts (Events, T-CSRs, and Snapshot-CSCs) to enable highly efficient data access and subgraph construction for diverse DGNN paradigms.
+    
+%     \item \textbf{Chunk-Oriented Distributed Execution.} To resolve the scheduling dilemma between coupled and decoupled models, we introduce a coupling-aware execution chain. Treating the chunk as the atomic unit, the runtime adaptively applies layer-wise coroutines for decoupled models and stale-cache background synchronization for coupled models, seamlessly hiding cross-partition communication behind computation.
+
+%     \item \textbf{Unified Architecture and Compilation Lowering.} To eliminate the fragmentation caused by hardwiring algorithms into low-level policies, we design a unified compilation surface. It automatically translates high-level model and task constraints into optimized physical execution plans, explicitly decoupling DGNN logic from underlying system implementations.
+    
+%     \item \textbf{Comprehensive Experiments.} Extensive evaluations across eight real-world datasets and diverse models demonstrate that StarryGL successfully unifies continuous and discrete dynamic graph training. Furthermore, it achieves comparable or superior end-to-end throughput and scalability against state-of-the-art specialized systems.
+% \end{itemize}
+%针对分布式上的困境，之前有许多专用化的系统被提出来，xxxxx方法。然而这些场景是碎片化的。这源于前面讨论的三个维度带来了不同的访问冲突，具体来讲，在时间表示上xxxx，在spatital aggrete聚合上，分为什么什么，这两点共同影响了storage，访问有什么冲突，在模型上分为什么什么，这两点影响了调度访问有什么冲突
+%Recent work has recognized that despite the CTDGs models and DTDG models being divided, these shared dimensions make unification possible, and has taken the first step toward a common infrastructure. TGM provides a modular single-machine library that supports both paradigms through a unified set of temporal data structures and model components. TGM's contribution, however, remains confined to the single-machine setting. As dynamic graphs continue to grow in scale, the need for distributed training becomes inevitable, and extending a unified library to distributed environments introduces challenges that do not exist on a single device. First, extending TGM beyond a single machine requires a distributed storage layer to partition temporal graphs and manage node states across machines while maintaining balanced storage and access workloads. Second, temporal dependencies require frequent synchronization of distributed node states during training, making communication overhead the primary bottleneck. Efficient execution therefore requires communication-aware scheduling to minimize synchronization costs and overlap communication with computation.
+
+%DGNN models combine two fundamental computations: spatial aggregation over graph neighborhoods via message passing, and temporal modeling of node state evolution over time. In a typical training pipeline, the model constructs a batch of training samples from the dynamic graph, aggregates neighborhood information through Graph Neural Network (GNN) message-passing layers, and updates internal temporal states via a temporal module that tracks how the graph evolves across interactions.
+
+
+%在这里加一个承上启下，动态图建模有三个维度的需求：时序怎么建模、空间怎么建模、怎么耦合。
+%While this general DGNN model structure is shared across models, the concrete realization of each stage varies significantly. The diversity of DGNN models can be characterized along three key dimensions. The first is \textbf{temporal representation}, referring to whether the dynamic graph is modeled as a continuous stream of timestamped events (e.g., TGN, TGAT) or as a sequence of discrete snapshots (e.g., EvolveGCN, DySAT). The second is 
+%spatial neighbor access
+%\textbf{neighbor access pattern}, referring to whether message passing is performed through recursive neighbor sampling, which dynamically retrieves multi-hop neighbors for each training query, or through full-graph propagation, which conceptually propagates messages over the full graph structure associated with the corresponding temporal unit. The
+%换成时间和空间的耦合
+%third is \textbf{computational coupling}, referring to whether GNN message passing and temporal state updates are interleaved through recurrent dependencies (e.g., TGN) or executed independently without cross-step state dependencies (e.g., TGAT, T-GCN, DySAT).
+
+%As DGNNs scale to billions of edges, non-distributed systems face severe memory and throughput bottlenecks. To alleviate this, existing distributed systems introduce specialized optimizations along three key design dimensions. Along the temporal representation dimension, event-oriented systems (e.g., TGL, DistTGL, GNNFlow, PipeTGL, MSPipe, Sven) process continuous events via mini-batches, relying on min-cut partitioning to reduce cross-worker edges or exploiting epoch-level parallelism to avoid communicating intermediate embeddings during message passing. In contrast, snapshot-oriented systems (e.g., DynaHB, DGC, ESDG, DynaGraph, SWASH, ReInc) process discrete instances using diverse spatio-temporal partitioning to balance workloads and minimize redundant state access. Along the neighbor access pattern dimension, sampling-based frameworks construct localized subgraphs to confine multi-hop aggregations within individual workers, while full-graph propagation necessitates extensive embedding exchanges across partition boundaries at every layer. Along the computational coupling dimension, decoupled systems often replicate boundary features or states to avoid frequent communication, whereas tightly coupled systems address strict temporal dependencies either by colocating consecutive temporal units to minimize state transfers or by utilizing stale caches and pipelining to approximate dependencies and hide synchronization overhead. 
+
+% Despite these advances, \textbf{the distributed DGNN ecosystem remains deeply fragmented}. Each framework hardwires a specific combination of these dimensions into its storage layout, partitioning policy, and execution scheduler. Recent efforts like TGM recognize the lack of unified training infrastructure across continuous- and discrete-time temporal graph models and provide a modular single-machine library that supports both representations. 
+% However, it does not address the distributed setting, where temporal representation, neighbor access, and computational coupling must be jointly mapped to partitioning, caching, communication, and synchronization strategies.
+%As DGNN models grow in architectural complexity and real-world dynamic graphs scale to billions of edges, non-distributed systems face fundamental bottlenecks in both memory capacity and computational throughput, while the diversity of DGNN modeling paradigms further complicates the design of general training systems. To alleviate the computational overhead of large-scale DGNN training, existing distributed systems have introduced specialized optimizations along the three key design dimensions discussed above.
+%Along the \textbf{temporal representation} dimension, event-oriented systems such as TGL, DistTGL, GNNFlow, PipeTGL, MSPipe, and Sven target workloads of continuous timestamped events and organize training around event mini-batches, temporal histories, and node memories. These systems usually rely on minimal cut-edge graph partitioning to reduce cross-partition edges or node replicas, or exploit epoch-level parallelism to utilize device-level parallelism without communicating intermediate embeddings during message passing. In contrast, snapshot-oriented systems such as DynaHB, DGC, ESDG, DynaGraph, SWASH, and ReInc target DTDG workloads by organizing computation over sequences of discrete graph instances. Their partitioning choices are more diverse: they can partition the graph within each snapshot, assign whole snapshots or sliding windows to different devices, or further combine graph and time dimensions into spatio-temporal partitions. These partitioning schemes aim to balance workload while reducing cross-device communication and redundant temporal-state access. 
+%Along the \textbf{neighbor access pattern} dimension, sampling-based systems such as TGL, GNNFlow, Sven, DynaHB, and ReInc first construct sampled subgraphs for target nodes or events and execute each mini-batch on the corresponding worker, so that multi-hop aggregation can be performed locally after sampling. In contrast, full-graph propagation performs message passing over all nodes in the corresponding snapshot, window, or block. In distributed execution, this requires each GNN layer to aggregate or exchange embeddings for all involved nodes, especially those on partition or window boundaries, before the next layer can proceed.
+%Along the \textbf{computational coupling} dimension, existing systems mainly differ in whether they can decouple graph computation from temporal-state evolution. For non-coupled or staged models, a common strategy is to replicate boundary features, cached neighborhoods, or spatio-temporal states, so that each device can independently execute its assigned sampled subgraph, snapshot, or block and avoid frequent neighbor communication during message passing, as in ESDG, DynaHB. For coupled or integrated models, graph computation and temporal-state updates are interleaved, so systems must preserve or approximate temporal dependencies. Existing methods therefore either colocate consecutive events, snapshots, or windows on the same device to reduce cross-device state transfer, or use stale caches, prefetching, and pipelining to hide synchronization costs, as in TGL, DistTGL, PipeTGL, MSPipe, ReInc, DynaGraph, DGC and SWASH. However, each framework hardwires only a specific combination of temporal representation, neighbor access pattern, and computational coupling into its storage layout, partitioning strategy, cache design, and execution scheduler. More recently, TGM recognizes the lack of unified training infrastructure across continuous- and discrete-time temporal graph methods and provides a modular single-machine library that supports both representations. However, it does not address the distributed setting, where temporal representation, neighbor access, and computational coupling must be jointly mapped to partitioning, caching, communication, and synchronization strategies. As a result, existing distributed systems remain deeply fragmented, each hardwiring a specific combination of design dimensions into its storage layout, partitioning policy, and execution scheduler. 
+
+% The fragmentation of existing systems stems from the fact that these modeling dimensions impose fundamentally different requirements on the underlying system stack. 
+% \textbf{First, temporal representation and neighbor access patterns create a partition-aware temporal data access bottleneck}, as a single physical partition layout cannot efficiently serve the irregular, latency-sensitive subgraph sampling and remote feature fetches required by continuous-time models, nor the bandwidth-bound, bulk matrix loading required by discrete snapshot models.
+% \textbf{Second, different computational coupling creates a communication-computation scheduling bottleneck}, as a fixed execution scheduler cannot concurrently enforce the strict step-by-step synchronization locks required by coupled models and provide the aggressive asynchronous pipelining expected by decoupled models.
+% \textbf{Finally, existing systems lack modular distributed APIs that separate DGNN design dimensions from distributed execution policies}, as the tight conflation between high-level algorithmic semantics and low-level execution policies forces users to rewrite the underlying distributed infrastructure when exploring new temporal models, sampling strategies, or downstream tasks.
+
+% \textbf{First, varying temporal representations and neighborhood scopes clash at the storage and data access layer}. Models driven by continuous events and localized sampling rely on precise, timestamp-based lookups to dynamically build temporal neighborhoods. In contrast, snapshot-oriented and full-graph models necessitate dense, window-level adjacency matrices to execute large-scale message propagation. 
+% \textbf{Second, distinct computational coupling mechanisms dictate incompatible execution and communication strategies}. Tightly coupled models enforce strict temporal dependencies, forcing systems to rely on spatial parallelism, which incurs massive communication overhead for state synchronization. Conversely, decoupled models lack these cross-step dependencies, naturally favoring temporal parallelism with minimal synchronization. These fundamentally opposing requirements make it impossible for a single execution engine to efficiently support both paradigms.
+% \textbf{Finally, the rigid coupling between downstream task heads and underlying system architectures severely isolates existing frameworks at the application layer.} Existing systems are typically over-specialized for specific downstream tasks, such as continuous edge prediction or snapshot node classification, and hardwire their entire system stack around these task-specific assumptions. For instance, frameworks optimized for edge prediction often rigidly enforce hotspot-shared partitioning to handle dense interactions, while systems targeting node classification are locked into independent, non-shared partitioning schemes. Because the task head dictates the underlying data organization and scheduling, researchers cannot adapt a system to a new task without a fundamental redesign, resulting in a highly fragmented user experience and prohibitive engineering overhead.
+
+
+%As DGNN models grow in architectural complexity and real-world dynamic graphs scale to billions of edges, existing non-distributed systems face fundamental bottlenecks in both memory capacity and computational throughput, and the diversity of modeling paradigms further complicates the design of general training systems.
+%To alleviate the immense computational overhead associated with training DGNNs at scale, a variety of distributed systems have been proposed, leveraging techniques like time-aware graph partitioning, asynchronous sampling pipelines, and inter-snapshot state synchronization. However, existing systems remain deeply fragmented, each hardwiring a specific combination of design dimensions. Frameworks such as TGL, DistTGL, and GNNFlow are built around event-driven, sampling-based workloads and cannot accommodate snapshot-based training. Snapshot-oriented systems such as DynaGraph and DynaHB support discrete snapshot workloads but remain restricted to sampling-based execution. Systems such as ESDG support full-graph propagation but are structurally confined to computationally coupled models. Even TGM, which targets both CTDGs and DTDGs, is limited to single-machine environments. As a result, no existing system covers the full space defined by the three dimensions introduced above.
+
+%The fragmentation of existing systems stems from the fact that these modeling dimensions impose fundamentally contradictory requirements on the underlying system stack. 
+% \textbf{First, varying temporal representations and neighborhood scopes clash at the storage and data access layer}. Models driven by continuous events and localized sampling rely on precise, timestamp-based lookups to dynamically build temporal neighborhoods. In contrast, snapshot-oriented and full-graph models necessitate dense, window-level adjacency matrices to execute large-scale message propagation. 
+% \textbf{Second, distinct computational coupling mechanisms dictate incompatible execution and communication strategies}. Tightly coupled models enforce strict temporal dependencies, forcing systems to rely on spatial parallelism, which incurs massive communication overhead for state synchronization. Conversely, decoupled models lack these cross-step dependencies, naturally favoring temporal parallelism with minimal synchronization. These fundamentally opposing requirements make it impossible for a single execution engine to efficiently support both paradigms.
+% \textbf{Finally, the rigid coupling between downstream task heads and underlying system architectures severely isolates existing frameworks at the application layer.} Existing systems are typically over-specialized for specific downstream tasks, such as continuous edge prediction or snapshot node classification, and hardwire their entire system stack around these task-specific assumptions. For instance, frameworks optimized for edge prediction often rigidly enforce hotspot-shared partitioning to handle dense interactions, while systems targeting node classification are locked into independent, non-shared partitioning schemes. Because the task head dictates the underlying data organization and scheduling, researchers cannot adapt a system to a new task without a fundamental redesign, resulting in a highly fragmented user experience and prohibitive engineering overhead.
+
+%To address these challenges and break the isolated silos in DGNN infrastructure, we present StarryGL, a comprehensive and unified distributed training library for dynamic graph neural networks. Rather than relying on disjointed, paradigm-specific abstractions, StarryGL anchors its architecture on a Spatiotemporal Chunk—a unit of computation and communication defined by a subset of nodes and a contiguous time interval. By restructuring the distributed graph learning stack around this core abstraction, StarryGL successfully resolves the systemic divergences caused by the three dimensions introduced above. Our primary contributions are summarized as follows:
+% To address these challenges, we present StarryGL, a unified distributed DGNN training library. StarryGL anchors its entire system stack on a single abstraction: \textbf{the Spatiotemporal Chunk}—an atomic physical unit for distributed storage, scheduling, and communication, defined by a spatial node partition and a contiguous temporal interval. This core abstraction fundamentally dismantles the aforementioned architectural conflicts. Our contributions are:
+% \begin{itemize}
+%     \item \textbf{Chunk-Indexed Multi-View Physical Store.} To overcome data access bottlenecks across heterogeneous DGNNs, we propose the Spatiotemporal Chunk as our foundational distributed data structure. Organized via two-stage streaming partitioning and temporal slicing, it dynamically supports multi-view layouts (Events, T-CSRs, and Snapshot-CSCs) to enable highly efficient data access and subgraph construction for diverse DGNN paradigms.
+    
+%     \item \textbf{Chunk-Oriented Distributed Execution.} To resolve the scheduling dilemma between coupled and decoupled models, we introduce a coupling-aware execution chain. Treating the chunk as the atomic unit, the runtime adaptively applies layer-wise coroutines for decoupled models and stale-cache background synchronization for coupled models, seamlessly hiding cross-partition communication behind computation.
+
+%     \item \textbf{Unified Architecture and Compilation Lowering.} To eliminate the fragmentation caused by hardwiring algorithms into low-level policies, we design a unified compilation surface. It automatically translates high-level model and task constraints into optimized physical execution plans, explicitly decoupling DGNN logic from underlying system implementations.
+    
+%     \item \textbf{Comprehensive Experiments.} Extensive evaluations across eight real-world datasets and diverse models demonstrate that StarryGL successfully unifies continuous and discrete dynamic graph training. Furthermore, it achieves comparable or superior end-to-end throughput and scalability against state-of-the-art specialized systems.
+% \end{itemize}
+% \begin{itemize}
+%     \item \textbf{Chunk-Indexed Multi-View Physical Store.} To overcome the partition-aware temporal data access bottleneck caused by heterogeneous graph representations, we materialize the Spatiotemporal Chunk as the foundational distributed data structure. We introduce a two-stage streaming partitioning and unified temporal slicing mechanism to organize the raw topology into this spatiotemporal structure. Building upon this unified chunk, the system dynamically constructs multi-view physical layouts (such as Event View, T-CSRs View and Snapshot-CSCs View), thereby providing comprehensive storage support for highly efficient data access and dynamic training subgraph construction across a broad spectrum of DGNN paradigms.
+    
+%     \item \textbf{Chunk-Oriented Distributed Execution.} To resolve the scheduling dilemma between tightly coupled models requiring strict temporal synchronization and decoupled models demanding asynchronous pipelining, we introduce a coupling-aware execution chain. By treating the chunk as the atomic execution unit, the runtime adaptively applies layer-wise coroutine scheduling for decoupled models and stale-cache-aware background synchronization for coupled models. This design seamlessly hides cross-partition communication behind computation.
+
+%     \item \textbf{Unified Architecture and Compilation Lowering.} To eliminate the deep fragmentation caused by hardwiring algorithmic semantics into low-level distributed policies, we design a modular architecture with a unified compilation surface. The system automatically translates high-level model, graph, and task constraints into optimized physical execution plans, explicitly decoupling DGNN logic from system implementation and eliminating the need for manual distributed policy rewriting.
+    
+%     \item \textbf{Comprehensive Experiments.} To validate the generality and efficiency of our chunk-centric design, we conduct extensive evaluations across eight real-world temporal graph datasets and a diverse set of representative DGNN models. The experimental results demonstrate that StarryGL successfully unifies continuous and discrete dynamic graph training within a single framework. Furthermore, it achieves comparable or superior end-to-end training throughput and scalability against state-of-the-art specialized systems.
+% \end{itemize}
+%\item \textbf{Multi-Semantic Storage and View Mechanism}. To resolve the data organization and access conflicts caused by continuous versus discrete time representations, as well as sampling versus full-graph scopes, StarryGL constructs a unified three-tier hybrid view mechanism. By exposing an event view (for fine-grained temporal neighbor retrieval), a snapshot TCSR view (for snapshot-based full-graph propagation), and a full TCSR view (for cross-snapshot global sampling) over the exact same underlying data, the system fundamentally eliminates the overhead of maintaining independent data pipelines for different model families.
+%\item \textbf{Spatiotemporal-Aware Execution and Communication Engine}. To overcome the restrictions on parallelization strategies and dependency chains imposed by different computational coupling mechanisms, StarryGL introduces spatiotemporal-aware graph partitioning alongside a chunk-centric scheduling and communication mechanism. To further break the temporal dependency bottlenecks inherent in tightly coupled models, we introduce an asynchronous GNN propagation pipeline with caching. This design maximizes spatiotemporal parallel efficiency and hardware utilization while strictly preserving model semantic correctness.
+%\item \textbf{Unified Task Interface and Flexible Partitionin}. StarryGL automatically selects a parallelization strategy based on the computational coupling of the target model, applying spatial parallelism for coupled models and temporal or spatiotemporal parallelism for decoupled models.
+
+%Depending on the granularity of temporal modeling, dynamic graph neural networks have evolved into two primary paradigms: Continuous-Time Dynamic Graphs (CTDG) and Discrete-Time Dynamic Graphs (DTDG). 
+%CTDG methods represent the graph as a chronologically ordered stream of timestamped events, where every edge or node interaction occurs at a continuous time point. Representative models include TGN\cite{}, TGAT\cite{}, JODIE\cite{}, which predominantly adopt event-based mini-batch training methodologies. These architectures heavily rely on specialized internal components such as temporal neighbor sampling, node memory modules, and message stores. 
+%Conversely, DTDG methods represent the dynamic graph as a sequence of static snapshots across discrete time slices. Typical models include EvolveGCN\cite{}, T-GCN\cite{}, and MPNN-LSTM\cite{}, which fundamentally operate from a snapshot or sliding window perspective. They internally support varying granularities of batch construction, ranging from nearly complete cluster-level batches to highly localized node, edge, or subgraph sampled batches. Consequently, the CTDG and DTDG paradigms exhibit profound disparities in data organization, training input construction, and state update mechanisms (Longa et al., 2023).
+
+
+%Driven by these fundamental algorithmic differences, existing dynamic graph learning systems typically support only a single paradigm, resulting in a highly fragmented ecosystem. Notably, even the recently proposed unified library TGM, which aims to support both CTDG and DTDG paradigms, is designed solely for single-machine environments and completely lacks the capability to scale to large-scale and distributed data. To address scalability, distributed platforms such as TGL\cite{}, DistTGL\cite{}, and GNNFlow\cite{} partition the graph strictly from an event perspective. These systems are meticulously designed around event-stream workloads, rendering them highly efficient but rigidly specialized for sampling-based CTDG training. Similarly, distributed systems dedicated to the snapshot level—such as DynaGraph\cite{}, DynaHB\cite{}, and  ESDG\cite{} predominantly support large-slice snapshot training for architectures like EvolveGCN or TGCN, creating another isolated island of specialized efficiency. This profound systemic segregation explicitly highlights the critical necessity for a novel unified library. Such a comprehensive framework is urgently required to bridge the gap between these heterogeneous paradigms and eliminate the performance bottlenecks caused by fragmented infrastructure.
+
+\end{comment}
+
+
+

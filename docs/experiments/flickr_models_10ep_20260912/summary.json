@@ -1,0 +1,47 @@
+{
+  "complete": true,
+  "runs": [
+    {
+      "model": "DCRNN",
+      "arm": "exact",
+      "epochs": 10,
+      "epoch10_train_mse": 0.08747312757703993,
+      "epoch10_val_mse": 0.15364306706648606
+    },
+    {
+      "model": "DCRNN",
+      "arm": "cache",
+      "epochs": 10,
+      "epoch10_train_mse": 0.08747410774230957,
+      "epoch10_val_mse": 0.15364830769025362
+    },
+    {
+      "model": "DCRNN",
+      "arm": "smooth",
+      "epochs": 10,
+      "epoch10_train_mse": 0.09578588715306034,
+      "epoch10_val_mse": 0.1627513078542856
+    },
+    {
+      "model": "GConvGRU",
+      "arm": "exact",
+      "epochs": 10,
+      "epoch10_train_mse": 0.12830335122567635,
+      "epoch10_val_mse": 0.2505971651810866
+    },
+    {
+      "model": "GConvGRU",
+      "arm": "cache",
+      "epochs": 10,
+      "epoch10_train_mse": 0.12833992198661523,
+      "epoch10_val_mse": 0.25073049618647647
+    },
+    {
+      "model": "GConvGRU",
+      "arm": "smooth",
+      "epochs": 10,
+      "epoch10_train_mse": 0.1446650469744647,
+      "epoch10_val_mse": 0.2850180222437932
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "dcrnn": {
+    "partition": "identical",
+    "time_ptr_2": "identical",
+    "split_time_ptr_2": "identical",
+    "new_view_plan": {
+      "kind": "snapshot",
+      "required_layouts": [
+        "snapshot_csc",
+        "snapshot_diffusion",
+        "snapshot_hot_compute"
+      ],
+      "temporal_csr_bidirectional": true,
+      "temporal_csr_shared": false
+    }
+  },
+  "gconv_gru": {
+    "partition": "identical",
+    "time_ptr_2": "identical",
+    "split_time_ptr_2": "identical",
+    "new_view_plan": {
+      "kind": "snapshot",
+      "required_layouts": [
+        "snapshot_csc",
+        "snapshot_hot_compute"
+      ],
+      "temporal_csr_bidirectional": true,
+      "temporal_csr_shared": false
+    }
+  }
+}

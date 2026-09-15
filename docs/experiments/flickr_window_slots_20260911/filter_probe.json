@@ -1,0 +1,22 @@
+{
+  "effective_max_skip": 1,
+  "cosine_distance_threshold": 0.3,
+  "controlled_collinear_state_probe": [
+    {
+      "step": 1,
+      "publish": true,
+      "skipped_count": 0
+    },
+    {
+      "step": 2,
+      "publish": false,
+      "skipped_count": 1
+    },
+    {
+      "step": 3,
+      "publish": true,
+      "skipped_count": 0
+    }
+  ],
+  "scope": "deterministic filter check; not Flickr publication statistics"
+}

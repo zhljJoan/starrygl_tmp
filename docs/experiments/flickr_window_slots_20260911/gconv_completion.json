@@ -1,0 +1,11 @@
+{
+  "completed_unix": 1789127506.8082318,
+  "runs": [
+    "gconv_gru_exact_s42",
+    "gconv_gru_cache_s42",
+    "gconv_gru_comp_s42"
+  ],
+  "plots_updated": true,
+  "verification": "verification_gconv_gru.json",
+  "dcrnn_cache_comp": "deferred"
+}

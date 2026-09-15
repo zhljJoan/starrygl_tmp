@@ -1,0 +1,9 @@
+{
+  "complete": true,
+  "training_points": 60,
+  "validation_points": 18,
+  "epochs_per_arm": 10,
+  "source_and_common_config_parity": "passed by compare.py",
+  "gconvgru_source": "first 10 epochs of identical-configuration completed run",
+  "final_test_required_for_curves": false
+}

@@ -1,0 +1,23 @@
+{
+  "train": {
+    "windows": 28,
+    "scored_windows": 27,
+    "zero_mse": 0.4211925268173218,
+    "persistence_mse": 0.02644278109073639,
+    "nonzero_target_fraction": 0.16043952107429504
+  },
+  "val": {
+    "windows": 14,
+    "scored_windows": 13,
+    "zero_mse": 0.9299684762954712,
+    "persistence_mse": 0.0056275613605976105,
+    "nonzero_target_fraction": 0.3340804874897003
+  },
+  "test": {
+    "windows": 28,
+    "scored_windows": 27,
+    "zero_mse": 0.7414296865463257,
+    "persistence_mse": 0.01507540512830019,
+    "nonzero_target_fraction": 0.28859850764274597
+  }
+}

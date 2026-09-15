@@ -1,0 +1,22 @@
+{
+  "dcrnn_exact_s42": {
+    "torchrun_pid": 2373735,
+    "process_start_unix": 1789100099.51,
+    "source": "Linux /proc/stat btime + /proc/PID/stat starttime ticks"
+  },
+  "dcrnn_stale1_s42": {
+    "torchrun_pid": 2373750,
+    "process_start_unix": 1789100100.68,
+    "source": "Linux /proc/stat btime + /proc/PID/stat starttime ticks"
+  },
+  "gconv_gru_exact_s42": {
+    "torchrun_pid": 2375262,
+    "process_start_unix": 1789100272.83,
+    "source": "Linux /proc/stat btime + /proc/PID/stat starttime ticks"
+  },
+  "gconv_gru_stale1_s42": {
+    "torchrun_pid": 2375274,
+    "process_start_unix": 1789100273.99,
+    "source": "Linux /proc/stat btime + /proc/PID/stat starttime ticks"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "data": {
+    "source": "${STARRYGL_DATA_ROOT}/starrygl/rec-amazon-ratings",
+    "temporal_representation": "snapshot_sequence"
+  },
+  "backbone": {
+    "name": "tgcn",
+    "in_dim": 2,
+    "hidden_dim": 16,
+    "out_dim": 1,
+    "num_layers": 2,
+    "temporal_representation": "snapshot_sequence",
+    "spatial_aggregation": "full_neighbor",
+    "coupling": "decoupled",
+    "state": "snapshot_recurrent"
+  },
+  "task": {"name": "node_regression"},
+  "runtime": {
+    "sampling": {
+      "mode": "full",
+      "window": {
+        "policy": "chunk_decay",
+        "snaps_count": 8,
+        "chunk_decay": [87, 59, 41, 28, 19, 13],
+        "num_full_snapshots": 2,
+        "chunk_order": "rand"
+      }
+    },
+    "preprocess": {
+      "partition_backend": "speed_partition",
+      "chunks_per_rank": 128,
+      "hot_node_ratio": 0.1
+    },
+    "gradient_sync": "ddp",
+    "ddp_static_graph": true,
+    "feature_device": "cuda",
+    "train": {"epochs": 30, "lr": 0.001}
+  }
+}

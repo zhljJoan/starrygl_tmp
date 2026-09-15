@@ -1,0 +1,44 @@
+{
+  "gconv_gru_exact_s42": {
+    "epochs": 100,
+    "validations": 21,
+    "test_steps": 27,
+    "source_matches_archive": true,
+    "finite_metrics": true,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "synchronized_model_parameters": true,
+    "rank_local_buffers_differ": [],
+    "train_stale_nonzero_increment_rows": 0,
+    "final_gamma": null,
+    "final_gamma_effective": null
+  },
+  "gconv_gru_cache_s42": {
+    "epochs": 100,
+    "validations": 21,
+    "test_steps": 27,
+    "source_matches_archive": true,
+    "finite_metrics": true,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "synchronized_model_parameters": true,
+    "rank_local_buffers_differ": [],
+    "train_stale_nonzero_increment_rows": 0,
+    "final_gamma": null,
+    "final_gamma_effective": null
+  },
+  "gconv_gru_comp_s42": {
+    "epochs": 100,
+    "validations": 21,
+    "test_steps": 27,
+    "source_matches_archive": true,
+    "finite_metrics": true,
+    "future_rows": 0,
+    "owner_stale_rows": 0,
+    "synchronized_model_parameters": true,
+    "rank_local_buffers_differ": [],
+    "train_stale_nonzero_increment_rows": 0,
+    "final_gamma": 0.5,
+    "final_gamma_effective": 0.622459352016449
+  }
+}

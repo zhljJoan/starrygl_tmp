@@ -1,0 +1,46 @@
+{
+  "data": {
+    "source": "${STARRYGL_DATA_ROOT}/starrygl/soc-bitcoin",
+    "temporal_representation": "snapshot_sequence"
+  },
+  "backbone": {
+    "name": "tgcn",
+    "in_dim": 2,
+    "hidden_dim": 2,
+    "out_dim": 1,
+    "num_layers": 2,
+    "temporal_representation": "snapshot_sequence",
+    "spatial_aggregation": "full_neighbor",
+    "coupling": "decoupled",
+    "state": "snapshot_recurrent",
+    "state_kind": "node_recurrent"
+  },
+  "task": {"name": "node_regression", "loss": "mse"},
+  "runtime": {
+    "temporal_state": {"consistency": "exact", "max_staleness": 0},
+    "sampling": {
+      "mode": "full",
+      "window": {
+        "policy": "chunk_decay",
+        "snaps_count": 4,
+        "chunk_decay": "auto:0.1",
+        "num_full_snapshots": 1,
+        "chunk_order": "rand"
+      }
+    },
+    "preprocess": {
+      "partition_backend": "speed_partition",
+      "speed_partition_beta": 0.1,
+      "chunks_per_rank": 128,
+      "hot_node_ratio": 0.1,
+      "split_ratios": [0.4, 0.0, 0.6]
+    },
+    "gradient_sync": "ddp",
+    "train": {
+      "epochs": 1000,
+      "optimizer": "adam",
+      "lr": 0.001,
+      "weight_decay": 0.0
+    }
+  }
+}

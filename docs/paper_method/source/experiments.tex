@@ -1,0 +1,685 @@
+\section{Experiments}
+\label{sec:experiments}
+We evaluate StarryGL as a unified distributed training system for heterogeneous DGNN modeling paradigms. Rather than exhaustively enumerating the Cartesian product of the three design dimensions, our evaluation selects representative workloads that exercise StarryGL’s major storage and execution paths. Specifically, the evaluated configurations collectively span event-stream and snapshot-sequence representations, sampled- and full-neighbor aggregation, and coupled and decoupled execution. Coupled execution is evaluated through both memory-based event-stream models and EvolveGCN, whose graph convolution at each snapshot depends on model parameters evolved from preceding snapshots. T-GCN and MPNN-LSTM exercise the decoupled full-neighbor snapshot path.
+Our evaluation answers the following three questions. \textit{Q1: Coverage and prediction quality.} Can the same distributed storage and execution stack support heterogeneous DGNN backbones and downstream tasks while preserving competitive prediction quality? \textit{Q2: Training efficiency.} How efficiently does StarryGL reach competitive prediction quality across event-stream and snapshot-sequence workloads? \textit{Q3: Scalability.} How does StarryGL scale across multiple GPUs and machines for sampled event-stream and full-neighbor snapshot workloads?
+% We evaluate StarryGL as a unified distributed training system for
+% dynamic graph neural networks. Our evaluation answers the following
+% three questions:
+% \textit{Q1: Generality across downstream tasks.}
+% Can the same distributed storage and execution stack support
+% different prediction heads without substantially degrading prediction
+% quality? We evaluate edge prediction, node classification, and node
+% regression using shared DGNN backbones with task-specific output
+% heads.
+% \textit{Q2: Training efficiency.}
+% How efficiently does StarryGL reach competitive prediction quality
+% across event-stream and snapshot-sequence workloads? We evaluate
+% convergence efficiency and the time required to reach a target
+% prediction quality.
+% \textit{Q3: Scalability.}
+% How does StarryGL scale as additional GPUs and machines are used?
+% We measure training throughput and speedup on representative
+% event-stream and snapshot-sequence workloads.
+
+\subsection{Experimental Setup}
+\label{subsec:exp_setup}
+\noindent\textbf{Testbed.}
+We conduct experiments on four machines connected through
+high-speed network links. Each machine is equipped with two Intel
+Xeon 6342R CPUs, 1~TB of DDR4 memory, and four NVIDIA A40 GPUs
+with 48~GB of memory each. CPU--GPU and intra-machine GPU--GPU
+communication use PCIe 4.0$\times$16. We denote deployment with
+$x$ machines and $y$ GPUs in total as \textit{$x$M$y$G}. The machines are connected with 100 Gbps InfiniBand/RDMA network. All experiments use CUDA 11.8.
+
+\noindent\textbf{Models.}
+We evaluate representative DGNN models spanning the three design
+dimensions discussed in Section~2. Event-stream workloads include
+JODIE~\cite{jodie}, TGAT~\cite{tgat}, TGN~\cite{tgn}, and
+APAN~\cite{apan}, all with sampled-neighbor aggregation. TGAT uses
+decoupled execution, whereas the other three use coupled execution
+with mutable temporal states. Snapshot-sequence workloads include
+T-GCN~\cite{tgcn}, MPNN-LSTM~\cite{mpnnlstm}, and
+EvolveGCN~\cite{evolvegcn}, all with full-neighbor aggregation. T-GCN and MPNN-LSTM use decoupled
+execution, whereas EvolveGCN is coupled because the graph convolution at the current snapshot consumes model parameters
+evolved from preceding snapshots.
+%and
+%executed through StarryGL's layer-wise snapshot pipeline.
+Collectively, these models span both temporal representations, both
+aggregation modes, and both coupling strategies, while exercising
+StarryGL's major distributed storage and execution paths.
+
+\noindent\textbf{Baselines.}
+We compare StarryGL with representative open-source distributed
+DGNN frameworks under model--task configurations supported by their
+released implementations. For event-stream workloads, we use
+TGL~\cite{zhou2022tgl}, DistTGL~\cite{zhou2023disttgl},
+GNNFlow~\cite{zhong2023gnnflow}, and
+MSPipe~\cite{sheng2024mspipe}. Since MSPipe supports only
+memory-based models, it is not included for TGAT. For
+snapshot-sequence workloads, we compare with ESDG~\cite{ESDG} and
+DynaHB~\cite{dynahb}. We additionally report TGM~\cite{tgm} as a
+single-GPU quality reference when its model, task, and data protocol
+can be aligned with ours.
+
+% %For event-stream workloads, we compare StarryGL with TGL,
+% DistTGL, GNNFlow, and MSPipe on the model-task configurations
+% natively supported by each system. For the GNNFlow family, we use
+% the model-specific optimized implementation when available, such as
+% PipeTGL for TGN. MSPipe is evaluated only on its supported
+% memory-based models and is therefore omitted from TGAT
+% experiments. For snapshot-sequence workloads, we compare against
+% ESDG and DynaHB when they provide compatible model and task
+% implementations. We use TGM only as a single-machine
+% prediction-quality reference for configurations whose task
+% construction, data split, and evaluation protocol can be aligned with
+% ours. We do not report TGM results for CTDG workloads because its
+% available CTDG evaluation pipeline uses a different task and
+% evaluation scope, making the resulting numbers not directly
+% comparable. TGM results, when reported, are therefore labeled as
+% references rather than distributed-system baselines.
+%We compare StarryGL against specialized distributed systems on their natively supported model-task settings, including TGL, DistTGL, GNNFlow, MSPipe, DynaHB, and ESDG. Among these, GNNFlow serves as the base framework, while PipeTGL is its dedicated optimization variant for TGN and is used as the TGN baseline. MSPipe provides system-level optimizations for memory-based DGNN models based on GNNFlow but lacks TGAT support, so we omit it from TGAT-based evaluations. For unsupported configurations, we use TGM as a single-machine reference to confirm that StarryGL's distributed execution achieves comparable accuracy. 
+
+\noindent\textbf{Tasks and metrics.}
+We evaluate four task settings: edge prediction on event-stream and
+snapshot-sequence graphs, node classification on event streams, and
+node in-degree regression on snapshot sequences. We use average
+precision (AP) for edge prediction, macro-averaged F1 score
+(Macro-F1) for node classification, and mean squared error (MSE) for
+node regression~\cite{tgn,huangflaredtdg}. Higher AP and macro-F1
+indicate better performance, whereas lower MSE is better.
+For efficiency comparisons, we focus on event-stream edge prediction
+and snapshot-sequence node regression, for which the released
+baselines provide aligned training and evaluation protocols. The
+remaining task settings reuse the same DGNN backbones and distributed
+execution stack with task-specific prediction heads, and are used to
+evaluate StarryGL's task generality and final prediction quality.
+When a fully aligned baseline pipeline is unavailable, the results are
+reported as evidence of task coverage rather than as strict
+head-to-head system comparisons.
+
+\noindent\textbf{Datasets.}
+We use eight real-world dynamic graph datasets following established
+evaluation settings in prior DGNN models and
+systems~\cite{zhou2022tgl,dataset1}.
+Table~\ref{tab:datasets} summarizes their temporal organizations and
+numbers of nodes and temporal edges. LASTFM, WikiTalk, StackOF, and
+GDELT are organized as timestamp-ordered event streams and are used
+to evaluate JODIE~\cite{jodie}, TGAT~\cite{tgat},
+TGN~\cite{tgn}, and APAN~\cite{apan}. We chronologically split each
+event stream into 70\% for training, 15\% for validation, and 15\%
+for testing. Rec-Amazon, Soc-YouTube, Soc-Flickr, and Soc-Bitcoin are organized
+as snapshot sequences and are used to evaluate
+T-GCN~\cite{tgcn}, MPNN-LSTM~\cite{mpnnlstm}, and
+EvolveGCN~\cite{evolvegcn}. For each snapshot sequence, the first
+40\% of the snapshots are used for training, and the remaining 60\%
+for testing. All splits preserve temporal order and prevent future
+information from being used during training. Detailed preprocessing
+procedures, model hyperparameters, and training configurations are
+provided in Appendix A.
+
+\begin{table}[t]
+\centering
+\caption{Dataset statistics.}
+\vspace{-10pt}
+\label{tab:datasets}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrr|rrr}  % 6列：左边3列 + 右边3列
+\toprule
+\multicolumn{3}{c|}{\textit{Event-stream organization}} & \multicolumn{3}{c}{\textit{Snapshot-based organization}} \\
+\cmidrule{1-3}\cmidrule{4-6}
+Dataset & $|V|$ & $|E|$ & Dataset & $|V|$ & $|E|$ \\
+\midrule
+LASTFM & 2.0K & 1.3M & Rec-Amazon & 2.1M & 5.8M \\
+WikiTalk & 1.1M & 7.9M & Soc-YouTube & 3.2M & 12.2M \\
+StackOF & 2.6M & 63.5M & Soc-Flickr & 2.2M & 33.1M \\
+GDELT & 16.7K & 191.3M & Soc-Bitcoin & 24.6M & 122.9M \\
+\bottomrule
+\end{tabular}
+\vspace{-20pt}
+\end{table}
+
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{chapts/pic/ctdg_final.pdf}
+    \vspace{-17pt}
+    \caption{Convergence comparison of event-specific edge prediction with other distributed GNN systems.}
+    \vspace{-10pt}
+    \label{fig:ctdg-convergence}
+\end{figure*}
+
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{chapts/pic/dtdg_final.pdf}
+    \vspace{-17pt}
+    \caption{Convergence comparison of snapshot-specific node regression with other distributed GNN systems.}
+    \vspace{-8pt}
+    \label{fig:dtdg-convergence}
+\end{figure*}
+
+\subsection{End-to-End Prediction Quality}
+\label{subsec:e2e_quality}
+We evaluate prediction quality from two complementary perspectives. First, we compare event-stream edge prediction and snapshot-sequence node regression with distributed baselines under aligned model--task settings. These experiments enable controlled comparisons under consistent training and evaluation protocols. Second, we evaluate
+event-stream node classification and snapshot-sequence edge prediction by replacing the task-specific prediction head while retaining the same
+DGNN backbones and distributed execution stack. These additional tasks examine whether StarryGL can support different downstream objectives
+without changing its underlying storage and execution pipeline. Training efficiency is evaluated separately in
+\autoref{sec:efficiency}.
+
+\noindent\textbf{Event-specific edge prediction.} 
+\autoref{tab:ctdg_accuracy} reports AP for future interaction
+prediction across four event-stream backbones.
+StarryGL achieves the highest AP among distributed systems in
+12 of the 16 model--dataset settings. More importantly,
+StarryGL completes all 16 settings through the same
+distributed storage and execution stack. Existing systems cover
+narrower workload or model subsets: ESDG and DynaHB target
+snapshot-sequence workloads, while several event-stream systems leave
+particular configurations unsupported. On the 16-GPU GDELT workload,
+StarryGL supports all four backbones and achieves the best AP in every
+setting.
+
+Specialized event-stream systems reduce overhead through different
+approximations. For example, MSPipe delays the synchronization of
+mutable temporal states by several batches. DistTGL aggressively
+deduplicates sampled nodes, reuses a fixed set of negative destination
+samples, and parallelizes training across epochs. GNNFlow performs
+negative sampling only from partition-local nodes. Although these
+designs improve execution efficiency, they may introduce
+quality--efficiency trade-offs through increased state staleness,
+loss of temporal distinctions during deduplication, or biased
+negative-sample distributions. StarryGL instead combines compensated
+stale-state access (\S\ref{sec:execution}), timestamp-aware
+deduplication, and mixed negative sampling. Specifically, it removes
+redundant sampled-node accesses while using both node identifiers and
+interaction timestamps as deduplication keys, preventing temporally
+distinct interactions from being incorrectly collapsed. It further
+samples local and global negative destinations with probabilities of
+0.9 and 0.1, respectively, reducing communication overhead while
+retaining temporal information and cross-partition training diversity.
+ The missing entries mainly reflect
+implementation-specific scalability limits: GNNFlow's CUDA sampler
+runs out of GPU memory for TGAT on StackOF, while TGM is constrained
+by single-GPU training time and memory capacity. At the prescribed number of training epochs, this
+translates into an end-to-end training time that substantially exceeds
+the setting-specific experimental budget, even on the smallest
+event-stream dataset. Moreover, its public release does not include the external
+optimized sampling backend referenced by the repository, and its
+message-processing path materializes large intermediate tensors that
+lead to out-of-memory failures on more demanding workloads.
+% \autoref{tab:ctdg_accuracy} reports AP for future interaction prediction across four event-stream backbones and four datasets. 
+% StarryGL achieves the highest AP among distributed systems in
+% \textbf{12 of the 16 model--dataset settings}. In the remaining four
+% settings, its AP is within 1.2 points of the best distributed result.
+% More importantly, \textbf{StarryGL completes all 16 settings through
+% the same distributed storage and execution stack}. Existing
+% frameworks are specialized for particular workload families or model
+% configurations: ESDG and DynaHB target snapshot-sequence workloads
+% and provide no aligned event-stream edge-prediction pipeline, while
+% several event-stream systems leave particular model configurations
+% unsupported. On the 16-GPU GDELT workload, StarryGL supports all four
+% backbones and achieves the best AP in every setting.
+
+% The results further suggest that the efficiency optimizations adopted
+% by specialized event-stream systems may introduce different
+% quality--efficiency trade-offs. MSPipe reduces the synchronization
+% frequency of mutable temporal states, while DistTGL reduces repeated
+% node accesses through aggressive deduplication, pre-samples a fixed
+% set of negative examples, and parallelizes training across epochs.
+% GNNFlow performs negative sampling primarily from locally available
+% nodes. These choices reduce communication or preprocessing overhead,
+% but may also increase temporal-state staleness, remove
+% timestamp-sensitive structural information, or bias the negative
+% samples toward individual partitions. TGL provides a general
+% event-stream training pipeline, but is limited to single-machine
+% execution and does not scale to the multi-machine settings considered
+% here.
+
+% StarryGL instead preserves the information required for model quality
+% while reducing distributed overhead. For mutable temporal states, it
+% adopts the staleness-compensation mechanism from \autoref{sec:execution}, 
+% which estimates state changes between synchronizations and mitigates the effect of less frequent remote
+% updates. During graph construction and deduplication, StarryGL retains
+% both node identifiers and temporal information, preventing distinct
+% time-stamped interactions from being collapsed into the same
+% structural record. For distributed negative sampling, StarryGL does
+% not restrict all negatives to local partitions or reuse a fixed
+% negative set. It samples a local negative with probability 0.9 and a
+% global negative with probability 0.1, providing predominantly
+% low-cost local sampling while retaining cross-partition diversity.
+% This mixed strategy reduces communication overhead without exposing
+% the model only to a narrow, partition-local negative distribution.
+
+% The missing entries arise from distinct scalability bottlenecks.
+% For TGAT on StackOF, the CUDA-based sampler used by GNNFlow
+% exhausts GPU memory during temporal-neighborhood construction,
+% whereas implementations using parallel CPU-based sampling can
+% complete the workload. TGM is reported only as a single-GPU quality
+% reference and is constrained by both memory capacity and training
+% cost on larger workloads. In particular, TGAT requires approximately
+% 900 seconds per epoch on LASTFM under TGM, more than
+% \textbf{50$\times$} the per-epoch training time of the other evaluated
+% systems; consequently, completing the prescribed training epochs
+% takes nearly one day even on the smallest event-stream dataset in our
+% evaluation and exceed training time budget for each dataset settings. In our inspection of the publicly released TGM code, the
+% repository indicates that an external optimized sampling backend is
+% required; however, the corresponding high-performance backend
+% implementation is not included in the public release. We therefore
+% evaluated the available execution path, which may partly explain the
+% observed performance gap. Moreover, on datasets with
+% higher-dimensional features or messages, TGM's message-processing
+% path materializes large intermediate tensors, resulting in
+% out-of-memory failures.
+%StarryGL achieves the highest AP in \textbf{11} of the 16 settings, including all TGN workloads, and remains competitive for JODIE and APAN. TGAT is the main exception on LASTFM and WikiTalk. The probabilistic remote-sampling strategy and bounded-staleness memory access are adapted from prior work~\cite{zhang2025effective} and generalized in StarryGL as unified policies for different sampling modes and coupled models. The results show no systematic quality degradation. Moreover, chronological partitioning
+%uses only past interactions and introduces no future-information leakage.
+\begin{table}[b]
+\centering
+\caption{The average precision of different models on event-specific edge prediction workloads. }
+\vspace{-10pt}
+\label{tab:ctdg_accuracy}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lll|c|ccccc}
+\toprule
+Model & Dataset & Scale & TGM(1-GPU) & TGL & DistTGL & GNNFlow & MSPipe & StarryGL \\
+\multicolumn{3}{r}{ } &\multicolumn{1}{r}{\textit{Reference}} & \multicolumn{5}{l}{\textit{Compared methods: AP, higher is better}} \\
+\midrule
+TGN & LASTFM & 1M4G & 75.66 & 81.48 & 76.83 & 79.42 & \underline{83.44} & \textbf{87.12} \\
+TGN & WikiTalk & 1M4G & 94.92 & \underline{96.65} & 94.43 & 94.59 & 95.62 & \textbf{97.78} \\
+TGN & StackOF & 1M4G & OOM & \underline{95.82} & 93.96 & 93.27 & 95.45 & \textbf{97.47} \\
+TGN & GDELT & 4M16G & OOM & N/S & 98.62 & 98.27 & \underline{98.71} & \textbf{99.16} \\
+\midrule
+APAN & LASTFM & 1M4G & N/S & 57.11 & 56.86 & 67.26 & \textbf{67.69} & \underline{67.41} \\
+APAN & WikiTalk & 1M4G & N/S & 91.86 & 90.05 & \textbf{93.95} & 92.70 & \underline{93.24} \\
+APAN & StackOF & 1M4G & N/S & 88.86 & 89.80 & \underline{91.40} & 87.58 & \textbf{93.21} \\
+APAN & GDELT & 4M16G & N/S & N/S & \underline{96.09} & 93.96 & 95.12 & \textbf{98.80} \\
+\midrule
+JODIE & LASTFM & 1M4G & 61.71 & \underline{61.24} & 56.46 & 55.26 & 56.35 & \textbf{61.82} \\
+JODIE & WikiTalk & 1M4G & 94.44 & \underline{95.07} & 92.71 & 93.99 & 92.13 & \textbf{95.52} \\
+JODIE & StackOF & 1M4G & 93.45 & \textbf{95.12} & 93.71 & 89.68 & 88.87 & \underline{93.94} \\
+JODIE & GDELT & 4M16G & N/S & N/S & 97.86 & 97.31 & \underline{98.12} & \textbf{99.08} \\
+\midrule
+TGAT & LASTFM & 1M4G & OOT & 65.00 & 64.13 & \textbf{73.81} & N/S & \underline{72.91} \\
+TGAT & WikiTalk & 1M4G & OOT & 90.31 & 89.21 & \underline{92.21} & N/S & \textbf{92.23} \\
+TGAT & StackOF & 1M4G & OOT & \underline{89.83} & 88.43 & OOM & N/S & \textbf{91.85} \\
+TGAT & GDELT & 4M16G & OOT & N/S & 95.75 & \underline{97.61} & N/S & \textbf{98.08} \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\scriptsize
+\noindent
+\impstar \textbf{Baseline coverage:}
+In contrast to existing systems specialized for a particular workload
+families, including ESDG and DynaHB, which provide no aligned
+event-stream pipeline, \textbf{StarryGL completes all 16
+model--dataset settings through the same distributed stack}.
+TGM is reported as a single-GPU quality reference and is excluded
+from the distributed ranking. N/S denotes an unsupported model
+configuration, OOM denotes out of memory, and OOT denotes a run that
+did not finish within the setting-specific total training time budget.
+Bold and underlined values denote the best and
+second-best distributed results, respectively.
+\end{minipage}
+%TGL\cite{zhou2022tgl}, DistTGL, GNNFlow, and MSPipe provide compatible
+%event-specific edge-prediction pipelines. ESDG and DynaHB do not
+%support this setting in their released implementations. TGM is
+%omitted because its released CTDG evaluation pipeline cannot be
+%directly aligned with ours. N/S denotes an unsupported model
+%configuration, and OOM denotes out of memory.
+\vspace{-5pt}
+\end{table}
+
+\noindent\textbf{Event-specific node label prediction.} \autoref{tab:event_node_label_quality} 
+%reports Macro-F1 on GDELT. StarryGL outperforms TGL for all four backbones, with particularly large gains for the memory-based TGN and APAN models. The strong results of memory-based models are also consistent with compensated bounded-staleness updates preserving useful temporal information under distributed execution.
+reports Macro-F1 on GDELT,
+the only dataset in our evaluation with node labels. StarryGL supports
+all four backbones through the same distributed storage and execution
+stack and achieves higher Macro-F1 than TGL in every setting, with
+particularly large improvements of 14.34 and 14.85 points for TGN and
+APAN, respectively. These gains are consistent with StarryGL's
+compensated bounded-staleness mechanism, which smooths the temporal
+evolution of node states and remains effective when the downstream
+objective changes from edge prediction to node classification.
+TGL is the only evaluated distributed baseline with a compatible
+node-classification pipeline; the other distributed systems specialize
+in event-stream edge prediction or snapshot-sequence tasks, while TGM
+uses a different data path and evaluation protocol. Moreover, TGL
+first trains the backbone for edge prediction and then fits a separate
+classification head, whereas StarryGL jointly trains the backbone and
+task head end to end. We therefore interpret these results as evidence
+of task coverage and final prediction quality rather than as a strictly
+controlled system comparison.
+\begin{table}[htbp]
+\centering
+\caption{Event-specific node label prediction on GDELT. We report Macro-F1, where higher is better.}
+\vspace{-10pt}
+\label{tab:event_node_label_quality}
+\small
+\begin{tabular}{lccccc}
+\toprule
+System & Scale &JODIE & TGAT & TGN & APAN \\
+\midrule
+TGL &1M4G & 21.63 & 18.62 & 11.51 & 10.04 \\
+StarryGL&1M4G& \textbf{23.91} & \textbf{19.06} & \textbf{25.85} & \textbf{24.89} \\
+\bottomrule
+\end{tabular}
+\begin{minipage}{\linewidth}
+\scriptsize
+$\bigstar$
+\textbf{Unified task coverage: StarryGL trains all four backbones
+end to end using the same distributed pipeline.} TGL is the only evaluated distributed baseline with a compatible
+implementation. DistTGL, GNNFlow, and MSPipe primarily target
+event-stream edge prediction, whereas ESDG and DynaHB target
+snapshot-sequence tasks. TGM follows a different node-prediction
+protocol and is therefore not directly comparable.
+\end{minipage}
+\vspace{-25pt}
+\end{table}
+
+% \noindent\textbf{Node in-degree Regression.} %\autoref{tab:dtdg_node_regression_current} reports the MSE for predicting active node in-degree in the next snapshot. For
+% T-GCN, MPNN-LSTM, and StarryGL achieve the lowest MSE among the distributed baselines in six of the eight settings and the best overall result in four. It also performs best for both models on the 16-GPU Soc-Bitcoin workload.
+% These results show that StarryGL preserves the full neighborhood computation and temporal ordering required by snapshot-based models, without introducing systematic quality loss under distributed execution. The results are more stable for T-GCN and MPNN-LSTM, whereas EvolveGCN shows larger variation across datasets, suggesting that models with evolving parameters are more sensitive to cross-snapshot execution and optimization differences.
+\noindent\textbf{Snapshot-sequence node in-degree regression.}
+\autoref{tab:dtdg_node_regression_current} reports the MSE for
+predicting the in-degree of active nodes in the next snapshot.
+StarryGL achieves the lowest MSE among distributed systems in
+11 of the 12 model--dataset settings and the best overall
+result, including the single-GPU TGM reference, in 7 settings.
+Moreover, StarryGL completes all three backbones on the 16-GPU
+Soc-Bitcoin workload, where TGM runs out of memory. These results show
+that StarryGL preserves competitive prediction quality across different
+snapshot models while reusing the same distributed storage and
+execution pipeline as the other evaluated tasks.
+The baselines expose different quality--efficiency trade-offs. DynaHB
+supports only sampled execution in its released implementation. This
+avoids part of the intra-snapshot boundary exchange, but its results
+are generally less accurate than full-neighbor training. ESDG supports
+full-neighbor execution, but converges more slowly and requires
+substantial communication when transferring distributed node
+representations from the GNN stage to the recurrent stage. StarryGL instead combines Snapshot-CSC-based
+full-neighbor storage, layer-wise propagation, and chunk decay over
+older snapshots~\cite{huangflaredtdg}. Its final quality, together
+with the convergence results in \autoref{fig:dtdg-convergence}, indicates
+that this resource-control policy does not introduce systematic
+accuracy degradation. EvolveGCN exhibits greater variation across
+datasets, suggesting that parameter-evolution models are more
+sensitive to optimization differences.
+\begin{table}[htbp]
+\centering
+\caption{Node in-degree regression quality of snapshot-specific node regression measured by MSE. Lower is
+better.}
+\vspace{-10pt}
+\label{tab:dtdg_node_regression_current}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lll|c|ccc}
+\toprule
+Model & Dataset & Scale & TGM(1GPU) & ESDG & DynaHB & StarryGL \\
+\multicolumn{3}{r}{ } &\multicolumn{1}{r}{\textit{Reference}}  & \multicolumn{3}{l}{\textit{Compared methods: MSE, lower is better}} \\
+\midrule
+TGCN & Rec-Amazon & 1M4G & 0.1993 & \underline{0.2659} & 0.6074 & \textbf{0.1076} \\
+TGCN & Soc-YouTube & 1M4G & 0.0606 & \underline{0.0670} & 0.2225 & \textbf{0.0613} \\
+TGCN & Soc-Flickr & 1M4G & 0.0932 & 0.2258 & \underline{0.2110} & \textbf{0.0692} \\
+TGCN & Soc-Bitcoin & 4M16G & OOM & 0.2387 & \underline{0.2090} & \textbf{0.0964} \\
+\midrule
+MPNN-LSTM & Rec-Amazon & 1M4G & 0.0884 & \underline{0.2661} & 0.5306 & \textbf{0.1060} \\
+MPNN-LSTM & Soc-YouTube & 1M4G & 0.0562 & 0.0748 & \underline{0.0738} & \textbf{0.0593} \\
+MPNN-LSTM & Soc-Flickr & 1M4G & 0.0479 & \underline{0.1306} & 0.2354 & \textbf{0.0687} \\
+MPNN-LSTM & Soc-Bitcoin & 4M16G & OOM & 0.1917 & \underline{0.1199} & \textbf{0.0891} \\
+\midrule
+EvolveGCN & Rec-Amazon & 1M4G & 0.3089 & 0.8427 & \underline{0.3224} & \textbf{0.2984} \\
+EvolveGCN & Soc-YouTube & 1M4G & 0.2970 & 0.3758 & \textbf{0.2398} & \underline{0.3107} \\
+EvolveGCN & Soc-Flickr & 1M4G & 0.3437 & \underline{0.3536} & 0.5724 & \textbf{0.3081} \\
+EvolveGCN & Soc-Bitcoin & 4M16G & OOM & 0.3523 & \underline{0.3441} & \textbf{0.2543} \\
+\bottomrule
+\end{tabular}
+
+\begin{minipage}{\linewidth}
+\scriptsize
+$\bigstar$ \textbf{Baseline coverage:}
+\textbf{StarryGL completes all 12 settings using the same distributed
+storage and execution stack as the other evaluated tasks, without
+task-specific system modifications.} ESDG supports full-neighbor training; DynaHB supports only sampled
+execution and is included as an approximate reference. TGM is a
+single-GPU reference and runs out of memory on Soc-Bitcoin. TGL,
+DistTGL, GNNFlow, and MSPipe support only event-stream workloads and
+do not support this task. Bold and underlined values denote the best
+and second-best distributed results; OOM denotes out of memory.
+\end{minipage}
+\vspace{-20pt}
+\end{table}
+
+\noindent\textbf{Snapshot-Specific Edge Prediction.}
+Table~\ref{tab:snapshot_edge_quality} reports AP for predicting
+interactions in the target snapshot window. By replacing only the
+task-specific prediction head, StarryGL supports all nine
+settings using the same distributed storage and execution pipeline as
+snapshot-sequence node regression. StarryGL matches or exceeds the
+single-GPU TGM reference in 7 of the 9 settings.
+
+The competitive AP may partly reflect the stronger locality
+requirements of edge prediction. StarryGL's topology-aware
+partitioning tends to colocate nodes with shared neighborhoods, while
+full-neighbor aggregation and mixed local--global negative sampling
+preserve local structural signals and cross-partition negative
+diversity. EvolveGCN shows greater variation across datasets because
+its evolving-weight optimization is less stable and more sensitive to
+graph partitioning and training configurations. Overall, the results
+indicate that StarryGL preserves competitive edge-prediction quality
+under distributed execution, although convergence remains less stable
+for EvolveGCN.
+  \begin{table}[htbp]
+  \centering
+  \caption{Snapshot-specific edge prediction. We report AP, where higher
+  is better.}
+  \vspace{-10pt}
+  \label{tab:snapshot_edge_quality}
+  \small
+  \begin{tabular}{llcc}
+  \toprule
+  Model & Dataset & TGM(1GPU) & StarryGL(1M4G) \\
+  \midrule
+  TGCN & Rec-Amazon  & 87.27 & \textbf{94.41} \\
+  TGCN & Soc-YouTube & 91.07 & \textbf{92.77} \\
+  TGCN & Soc-Flickr  & 96.67 & \textbf{96.79} \\
+  \midrule
+  MPNN-LSTM & Rec-Amazon  & 93.56 & \textbf{95.01} \\
+  MPNN-LSTM & Soc-YouTube & 92.47 & \textbf{94.12} \\
+  MPNN-LSTM & Soc-Flickr  & 97.09 & \textbf{97.46} \\
+  \midrule
+  EvolveGCN & Rec-Amazon  & 90.30 & \textbf{92.65} \\
+  EvolveGCN & Soc-YouTube & \textbf{92.50} & 91.61 \\
+  EvolveGCN & Soc-Flickr  & \textbf{95.23} & 95.14 \\
+  \bottomrule
+  \end{tabular}
+  \begin{minipage}{\linewidth}
+    \scriptsize
+    $\bigstar$ \textbf{Unified task coverage: By replacing only the task head,
+StarryGL trains all three backbones for snapshot-sequence edge
+prediction using the same distributed pipeline as node regression.}
+ESDG and DynaHB support snapshot-sequence node prediction or
+regression but do not support edge prediction. TGL, DistTGL,
+GNNFlow, and MSPipe target event-stream workloads and do not support
+this task. TGM is reported as a single-GPU quality reference.
+    \end{minipage}
+  \vspace{-10pt}
+  \end{table}
+  
+\subsection{Efficiency Behavior}
+\label{sec:efficiency}
+We evaluate training efficiency from two complementary perspectives.
+\autoref{fig:ctdg-convergence} and
+\autoref{fig:dtdg-convergence} report prediction quality over
+cumulative training time, while
+\autoref{fig:perto} compares the resulting prediction
+quality with steady-state training throughput. For snapshot-sequence
+workloads, we report the best quality achieved within 300 seconds;
+for event-stream workloads, each model--dataset setting follows its
+prescribed epoch count, with details provided in
+Appendix A.
+Overall, StarryGL reaches competitive quality rapidly and
+maintains a favorable quality--throughput trade-off across both
+workload families. The convergence curves show that StarryGL reaches
+the target quality with the shortest or second-shortest training time
+in most representative settings, while the quality--throughput plot
+shows that this convergence efficiency is not obtained by sacrificing
+final prediction quality.
+
+StarryGL does not always achieve the highest raw throughput on simpler
+event-stream workloads such as JODIE and TGAT, because its unified
+runtime performs additional timestamp-aware deduplication, state
+compensation, complicated state management.
+These mechanisms introduce extra local processing and metadata
+overhead, but their benefits become more evident for TGN and APAN,
+where neighbor sampling and mutable-state synchronization must be
+handled simultaneously. For snapshot-sequence workloads, StarryGL
+achieves the highest or near-highest throughput in most settings and
+also converges faster than the full-graph ESDG baseline. Although DynaHB avoids part of the
+intra-snapshot boundary exchange through sampled execution, its
+throughput remains limited by irregular neighbor sampling, subgraph
+construction, and reduced computation regularity. 
+However, DynaHB's sampled execution can improve early convergence by avoiding
+part of the boundary exchange, it generally stabilizes at a worse
+MSE. StarryGL instead combines Snapshot-CSC-based full-neighbor
+storage, layer-wise communication--computation overlap, and historical
+chunk decay, thereby preserving both convergence quality and
+distributed efficiency.
+% We evaluate convergence efficiency using test accuracy over cumulative training time and the time required to reach the target accuracy. \autoref{fig:ctdg-convergence} and~\autoref{fig:dtdg-convergence} show representative convergence
+% trajectories for event-specific workloads and snapshot-specific workloads, respectively, while
+% \autoref{tab:ctdg_training_time_row_min} and \autoref{tab:dtdg_training_time_row_min} report the corresponding cumulative training time to target accuracy results. For each model--dataset setting, the target is defined using the lowest converged AP among CTDG-specific systems and the highest converged specific MSE among DTDG systems. We use 99\% of the lowest AP and 1.01$\times$ of highest MSE, respectively, to reduce sensitivity to small metric fluctuations.
+% \label{subsec:convergence}
+
+% StarryGL reaches the target with the shortest or second-shortest training time in most settings. The gains are particularly clear for the event-stream models TGN and APAN and the snapshot-sequence models T-GCN and MPNN-LSTM. Although StarryGL is not always the fastest during the early stages of training, it generally converges more smoothly and reaches competitive or better final quality.
+
+% Across both sampled event-stream workloads and full-neighbor snapshot workloads, StarryGL achieves convergence efficiency
+% comparable to specialized systems. Its STC-indexed multi-view store provides workload-specific Event, T-CSR, and Snapshot-CSC views for their different access patterns. StarryGL also remains competitive on 16-GPU deployments, including against communication-avoiding systems such as DistTGL and DynaHB. Rather than relying solely on communication avoidance, StarryGL preserves the model dependency structure through compensated bounded-staleness updates, which reduce critical-path state synchronization for coupled CTDG workloads. For full-neighbor DTDG workloads, scalable layer-wise boundary exchange overlaps communication with computation. Together, these mechanisms enable StarryGL to achieve competitive
+% convergence efficiency while maintaining strong final prediction quality.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{chapts/pic/pareto_all_models_with_ctdg_paper_3col_narrow.pdf}
+    \vspace{-15pt}
+    \caption{Quality--throughput trade-off under the evaluation schedule
+    of each model--dataset setting. Each point reports the resulting test
+    AP or MSE together with the corresponding training throughput.}
+    \vspace{-5pt}
+    \label{fig:perto}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{chapts/pic/scalability_throughput_20260718_halfcolumn.pdf}
+    \vspace{-20pt}
+    \caption{Scalability of three representative StarryGL execution
+    paths from 4 to 16 GPUs. Throughput is normalized to the
+    corresponding 4-GPU configuration. }
+    \vspace{-15pt}
+    \label{fig:scalability}
+\end{figure}
+% \begin{table}[t]
+% \centering
+% \caption{Training Time (s) to reach 99\% of the lowest converged AP among systems with convergence logs for each event-specific edge-prediction setting at evaluation checkpoints. Lower is better.} 
+% \vspace{-10pt}
+% \label{tab:ctdg_training_time_row_min}
+% \scriptsize
+% \setlength{\tabcolsep}{3pt}
+% \begin{tabular}{lllccccc}
+% \toprule
+% Model & Dataset &Scale& TGL & DistTGL & GNNFlow-based & MSPipe & StarryGL \\
+% \midrule
+% TGN & LASTFM & 1M4G&42.01 & 42.84 & 103.13 & \underline{28.88} & \textbf{12.24} \\
+% TGN & WikiTalk & 1M4G&\underline{38.23} & 49.77 & 49.37 & 44.81 & \textbf{15.55} \\
+% TGN & StackOF &1M4G& 334.39 & 1338.00 & 1863.19 & \textbf{138.64} & \underline{148.36} \\
+% TGN & GDELT & 4M16G&N/S & 145.14 & 226.64 & \textbf{133.67} & \underline{141.82} \\
+% \midrule
+% APAN & LASTFM & 1M4G&495.20 & 401.55 & 62.88 & \underline{28.13} & \textbf{7.43} \\
+% APAN & WikiTalk & 1M4G&130.27 & 254.12 & 94.98 & \underline{50.43} & \textbf{12.04} \\
+% APAN & Stack & 1M4G&734.61 & 2198.81 & 7019.38 & \underline{462.10} & \textbf{96.14} \\
+% APAN & GDELT & 4M16G&N/S & 228.14 & 6634.90 & \underline{192.51} & \textbf{127.86} \\
+% \midrule
+% JODIE & LASTFM & 1M4G&29.81 & \textbf{9.56} & 292.96 & 71.80 & \underline{13.79} \\
+% JODIE & WikiTalk & 1M4G&34.41 & \underline{31.07} & 133.74 & 57.31 & \textbf{19.01} \\
+% JODIE & StackOF & 1M4G&53.19 & \underline{43.22} & 1048.80 & \textbf{33.27} & 50.82 \\
+% JODIE & GDELT & 4M16G&N/S & \underline{38.47} & 9392.48 & \textbf{34.71} & 86.10 \\
+% \midrule
+% TGAT & 1M4G&LASTFM & 65.14 & 203.11 & \textbf{8.68} & N/S & \underline{52.43} \\
+% TGAT & 1M4G&WikiTalk & \underline{119.36} & 333.36 & \textbf{43.84} & N/S & 426.70 \\
+% TGAT & 1M4G&StackOF & \textbf{1812.88} & 23649.59 & OOM & N/S & \underline{2302.84} \\
+% TGAT & 4M16G&GDELT & N/S & \textbf{405.35} & \underline{2515.85} & N/S & N/S \\
+% \bottomrule
+% \end{tabular}
+% \vspace{2pt}
+% \begin{minipage}{\linewidth}
+% \scriptsize
+% \textit{Baseline coverage:}
+% We compare only distributed event-stream systems with compatible
+% edge-prediction pipelines and convergence logs. TGL is evaluated on
+% 4 GPUs but does not support the 16-GPU configuration in the evaluated
+% implementation. TGM is omitted because it provides only a
+% single-machine reference with an unaligned CTDG execution pipeline.
+% N/S denotes an unsupported configuration, and OOM denotes out of
+% memory.
+% \end{minipage}
+% \vspace{-10pt}
+% \end{table}
+
+% \begin{table}[t]
+% \centering
+% \caption{Training Time (s) to reach the highest converged MSE among systems with convergence logs for each snapshot-specific node-regression setting at evaluation checkpoints. Lower is better. }
+% \vspace{-10pt}
+% \label{tab:dtdg_training_time_row_min}
+% \scriptsize
+% \setlength{\tabcolsep}{4pt}
+% \begin{tabular}{lllcccc}
+% \toprule
+% Model & Dataset & Scale & ESDG & DynaHB & TGM(1GPU). & StarryGL \\
+% \midrule
+% TGCN & Rec-Amazon & 1M4G & 33.4 & \underline{7.17} & 29.8 & \textbf{3.48} \\
+% TGCN & Soc-YouTube & 1M4G & 355 & \textbf{5.20} & 835 & \underline{206} \\
+% TGCN & Soc-Flickr & 1M4G & 240 & \underline{64.8} & 220 & \textbf{15.4} \\
+% TGCN & Soc-Bitcoin & 4M16G & 16870 & \underline{483} & N/S & \textbf{30.0} \\
+% \midrule
+% MPNN-LSTM & Rec-Amazon & 1M4G & \underline{62.5} & 1140 & 63.1 & \textbf{12.3} \\
+% MPNN-LSTM & Soc-YouTube & 1M4G & 275 & \underline{214} & 1382 & \textbf{86.3} \\
+% MPNN-LSTM & Soc-Flickr & 1M4G & 225 & \textbf{25.4} & 512 & \underline{33.7} \\
+% MPNN-LSTM & Soc-Bitcoin & 4M16G & 2494 & \underline{95.7} & N/S & \textbf{45.7} \\
+% \midrule
+% EvolveGCN & Rec-Amazon & 1M4G & \underline{31.4} & \textbf{2.17} & 1135 & 59.3 \\
+% EvolveGCN & Soc-YouTube & 1M4G & 69.7 & \textbf{1.16} & 1205 & \underline{11.6} \\
+% EvolveGCN & Soc-Flickr & 1M4G & \underline{41.2} & \textbf{2.18} & 160 & 60.7 \\
+% EvolveGCN & Soc-Bitcoin & 4M16G & \underline{837} & \textbf{0.46} & N/S & -- \\
+% \bottomrule
+% \end{tabular}
+% \vspace{2pt}
+% \begin{minipage}{\linewidth}
+% \scriptsize
+% \textit{Baseline coverage:}
+% ESDG and DynaHB are the compatible distributed baselines for
+% snapshot-specific node regression. TGM runs on a single machine with
+% one GPU and is included only as a non-distributed reference; it is not
+% used to assess distributed speedup. Event-stream systems do not
+% support this setting in their released implementations.
+% \end{minipage}
+% \vspace{-10pt}
+% \end{table}
+
+\subsection{Scalability}
+\label{sec:scalability}
+We next evaluate StarryGL from 1M4G to 4M16G on three representative
+execution paths: coupled sampled-neighbor execution with TGN on
+GDELT, decoupled sampled-neighbor execution with TGAT on GDELT, and
+decoupled full-neighbor execution with T-GCN on Soc-Bitcoin.
+\autoref{fig:scalability} reports throughput normalized to
+the corresponding 4-GPU deployment.
+
+At 16 GPUs, StarryGL achieves \textbf{3.23$\times$} normalized
+throughput for TGN, \textbf{4.17$\times$} for TGAT, and
+\textbf{2.84$\times$} for T-GCN. TGAT scales most effectively because
+its decoupled execution allows remote sampling and feature access to
+be overlapped aggressively with local computation. TGN additionally
+requires mutable-state synchronization, which remains partly on the
+critical path. T-GCN performs full-neighbor propagation and therefore
+incurs structured boundary exchange at every GNN layer. Nevertheless,
+the results show that the same StarryGL runtime scales across
+substantially different sampling, communication, and spatiotemporal coupling
+patterns.
