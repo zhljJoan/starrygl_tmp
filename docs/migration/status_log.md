@@ -7460,5 +7460,10 @@ pooled AP and other explicitly deferred plan items remain unimplemented.
   control; existing prepared tensor layouts were reused for T-CSR and
   Snapshot-CSC. No new DGL or C++/CUDA operator is needed for this initial
   graph-access benchmark.
-- Unresolved risks: full-dataset runs and GPU-resident feature materialization
-  remain to be measured; CSV parse time is intentionally outside access timing.
+- Full LASTFM result: 1,293,103 edges, batch size 8,000, fanout 10, 16
+  snapshots, and 20 timed repeats completed with exact edge-set parity. T-CSR
+  history access was 44.9x faster than Event scanning; prepared Snapshot-CSC
+  access was 2.3x faster than Event-to-snapshot construction and 6.9x faster
+  than T-CSR-to-snapshot construction before one-time build cost.
+- Unresolved risks: GPU-resident feature materialization remains to be measured;
+  CSV parse time is intentionally outside access timing.
