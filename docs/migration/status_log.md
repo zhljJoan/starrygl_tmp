@@ -7460,10 +7460,13 @@ pooled AP and other explicitly deferred plan items remain unimplemented.
   control; existing prepared tensor layouts were reused for T-CSR and
   Snapshot-CSC. No new DGL or C++/CUDA operator is needed for this initial
   graph-access benchmark.
-- Full LASTFM result: 1,293,103 edges, batch size 8,000, fanout 10, 16
-  snapshots, and 20 timed repeats completed with exact edge-set parity. T-CSR
-  history access was 44.9x faster than Event scanning; prepared Snapshot-CSC
-  access was 2.3x faster than Event-to-snapshot construction and 6.9x faster
-  than T-CSR-to-snapshot construction before one-time build cost.
+- Corrected full LASTFM result: 1,293,103 edges, batch size 8,000, fanout 10,
+  16 snapshots, and 20 timed repeats completed with physical edge-set parity.
+  T-CSR history access was 43.7x faster than Event scanning. For the last
+  snapshot, Event identified 1,686 roots and native T-CSR snapshot sampling
+  extracted all 80,833 physical edges with fanout 5,585 in 45.1 ms; prepared
+  Snapshot-CSC wrapped the model-ready row in 1.32 ms. The earlier T-CSR
+  snapshot result was invalid because it scanned all T-CSR entries by physical
+  edge row; that path was removed.
 - Unresolved risks: GPU-resident feature materialization remains to be measured;
   CSV parse time is intentionally outside access timing.

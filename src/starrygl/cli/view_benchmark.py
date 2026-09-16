@@ -13,6 +13,8 @@ from starrygl.prepare import load_graph_data
 from starrygl.prepare.snapshot_csc import build_snapshot_csc_views
 from starrygl.prepare.temporal_csr import build_temporal_csr_view
 from starrygl.runtime.dataloader.blocks import event_rows_to_graph_block, snapshot_row_to_graph_block
+from starrygl.runtime.sample import build_native_sampler
+from starrygl.store import FeatureManager, GraphStore, LabelStore, StoreBundle
 
 
 def _time(fn, repeats: int):
@@ -54,16 +56,14 @@ def _snapshot_event(graph, begin, end):
     return event_rows_to_graph_block(view, torch.arange(begin, end))
 
 
-def _snapshot_tcsr(graph, tcsr, begin, end):
-    feature_rows = tcsr["edge_feature_ids"].index_select(0, tcsr["edge_order"])
-    positions = ((feature_rows >= begin) & (feature_rows < end)).nonzero(as_tuple=True)[0]
-    rows = tcsr["edge_order"].index_select(0, positions)
-    return event_rows_to_graph_block(tcsr, rows)
+def _snapshot_tcsr(sampler, graph, begin, end, snapshot_id):
+    roots = torch.unique(torch.cat((graph.src[begin:end], graph.dst[begin:end])))
+    return sampler.sample_blocks(roots, torch.full_like(roots, snapshot_id))[0]
 
 
 def _edge_ids(batch):
     block = batch.graph if batch.graph is not None else batch.blocks[0][0]
-    return torch.sort(block.edge_ids.long()).values
+    return torch.unique(block.edge_ids.long(), sorted=True)
 
 
 def run(args):
@@ -116,18 +116,34 @@ def run(args):
 
     sid = len(snapshots) - 1 if args.snapshot < 0 else min(args.snapshot, len(snapshots) - 1)
     begin, end = map(int, ptr[sid].tolist())
+    snapshot_nodes = torch.cat((graph.src[begin:end], graph.dst[begin:end]))
+    full_fanout = max(1, int(torch.bincount(snapshot_nodes, minlength=nodes).max().item()))
+    store = StoreBundle(
+        graph=GraphStore(num_nodes=nodes, prepare={"meta": {"world_size": 1},
+            "partition": {"node_dist_index": torch.arange(nodes), "node_is_hot": hot_mask},
+            "time_ptr_2": ptr, "temporal_csr_view": tcsr, "snapshot_csc_views": [{"slices": snapshots}]}),
+        features=FeatureManager(), labels=LabelStore())
+    t0 = time.perf_counter()
+    snapshot_sampler = build_native_sampler(store, tcsr, fanouts=(full_fanout,), num_layers=1,
+        options={"policy": "snapshot_uniform", "workers": 1}, snapshot=True)
+    sampler_build = time.perf_counter() - t0
     event_snap, event_snap_time = _time(lambda: _snapshot_event(graph, begin, end), args.repeats)
-    tcsr_snap, tcsr_snap_time = _time(lambda: _snapshot_tcsr(graph, tcsr, begin, end), args.repeats)
+    tcsr_snap, tcsr_snap_time = _time(
+        lambda: _snapshot_tcsr(snapshot_sampler, graph, begin, end, sid), args.repeats)
     csc_snap, csc_time = _time(lambda: snapshot_row_to_graph_block(snapshots[sid]), args.repeats)
     snapshot_batches = [Batch(mode="snapshot", graph=b) for b in (event_snap, tcsr_snap, csc_snap)]
     expected = _edge_ids(snapshot_batches[0])
     if any(not torch.equal(expected, _edge_ids(batch)) for batch in snapshot_batches[1:]):
-        raise RuntimeError("snapshot paths produced different edges")
+        counts = [int(_edge_ids(batch).numel()) for batch in snapshot_batches]
+        raise RuntimeError(f"snapshot paths produced different edges: event/tcsr/csc={counts}")
 
     result = {"data": "synthetic" if args.synthetic_edges else str(args.data), "num_nodes": nodes, "num_edges": int(edges),
         "query": {"batch_roots": int(roots.numel()), "fanout": args.fanout,
-                  "snapshot": sid, "snapshot_edges": end - begin},
+                  "snapshot": sid, "snapshot_edges": end - begin,
+                  "snapshot_nodes": int(torch.unique(snapshot_nodes).numel()),
+                  "snapshot_full_fanout": full_fanout},
         "build_seconds": {"event": 0.0, "temporal_csr": tcsr_build,
+                          "temporal_csr_sampler": sampler_build,
                           "snapshot_csc": snapshot_build},
         "model_ready_seconds": {"history_event": event_time, "history_tcsr": tcsr_time,
             "snapshot_event": event_snap_time, "snapshot_tcsr": tcsr_snap_time,
@@ -136,7 +152,7 @@ def run(args):
         str(n): {"history_event": n * event_time["median_seconds"],
                  "history_tcsr": tcsr_build + n * tcsr_time["median_seconds"],
                  "snapshot_event": n * event_snap_time["median_seconds"],
-                 "snapshot_tcsr": tcsr_build + n * tcsr_snap_time["median_seconds"],
+                 "snapshot_tcsr": tcsr_build + sampler_build + n * tcsr_snap_time["median_seconds"],
                  "snapshot_csc": snapshot_build + n * csc_time["median_seconds"]}
         for n in (1, 5, 10, 50, 100)}
     args.output.parent.mkdir(parents=True, exist_ok=True)
