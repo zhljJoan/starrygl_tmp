@@ -7,10 +7,11 @@ contract fixed.
 Two comparisons are measured:
 
 1. Event scan versus T-CSR lookup for one batch of historical-neighbor roots.
-2. Event-to-snapshot, Event-bounded T-CSR full-neighbor sampling, and prepared
+2. Event-to-snapshot, Event-bounded T-CSR-to-CSC construction, and prepared
    Snapshot-CSC access for one complete snapshot. The Event interval supplies
-   the snapshot id and root nodes; native `snapshot_uniform` sampling extracts
-   every neighbor of those roots from T-CSR.
+   the physical edge range and active nodes. A prepared edge-row-to-T-CSR-position
+   map gathers the neighbor indices and constructs `indptr` directly, without
+   sampling, reverse expansion, MFG compaction, or node renumbering.
 
 Timing ends after construction of the `GraphBlock` and `Batch` accepted by a
 model. Model forward, feature communication, and optimization are outside this

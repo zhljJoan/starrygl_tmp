@@ -7462,11 +7462,12 @@ pooled AP and other explicitly deferred plan items remain unimplemented.
   graph-access benchmark.
 - Corrected full LASTFM result: 1,293,103 edges, batch size 8,000, fanout 10,
   16 snapshots, and 20 timed repeats completed with physical edge-set parity.
-  T-CSR history access was 43.7x faster than Event scanning. For the last
-  snapshot, Event identified 1,686 roots and native T-CSR snapshot sampling
-  extracted all 80,833 physical edges with fanout 5,585 in 45.1 ms; prepared
-  Snapshot-CSC wrapped the model-ready row in 1.32 ms. The earlier T-CSR
-  snapshot result was invalid because it scanned all T-CSR entries by physical
-  edge row; that path was removed.
+  T-CSR history access was 44.4x faster than Event scanning. For the last
+  snapshot, Event identified the 80,833-edge interval and 1,686 active nodes;
+  the destination-oriented T-CSR used a prepared physical-row position map to
+  gather neighbor indices and build CSC directly in 1.73 ms. Prepared
+  Snapshot-CSC wrapped the model-ready row in 1.10 ms, a 1.57x hot-path gain.
+  No native sampling, reverse expansion, MFG compaction, or node renumbering is
+  included in the T-CSR snapshot path.
 - Unresolved risks: GPU-resident feature materialization remains to be measured;
   CSV parse time is intentionally outside access timing.

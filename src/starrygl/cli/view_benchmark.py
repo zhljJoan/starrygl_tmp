@@ -13,8 +13,7 @@ from starrygl.prepare import load_graph_data
 from starrygl.prepare.snapshot_csc import build_snapshot_csc_views
 from starrygl.prepare.temporal_csr import build_temporal_csr_view
 from starrygl.runtime.dataloader.blocks import event_rows_to_graph_block, snapshot_row_to_graph_block
-from starrygl.runtime.sample import build_native_sampler
-from starrygl.store import FeatureManager, GraphStore, LabelStore, StoreBundle
+from starrygl.view import GraphBlock, graph_block_from_coo
 
 
 def _time(fn, repeats: int):
@@ -52,13 +51,22 @@ def _tcsr_recent(view, roots, fanout):
 
 
 def _snapshot_event(graph, begin, end):
-    view = {"src": graph.src, "dst": graph.dst, "edge_ids": graph.edge_ids, "ts": graph.ts}
-    return event_rows_to_graph_block(view, torch.arange(begin, end))
+    rows = torch.arange(begin, end)
+    return graph_block_from_coo(src=graph.src[rows], dst=graph.dst[rows],
+        edge_ids=graph.edge_ids[rows], num_nodes=graph.num_nodes, format="csc", materialize_coo=False)
 
 
-def _snapshot_tcsr(sampler, graph, begin, end, snapshot_id):
-    roots = torch.unique(torch.cat((graph.src[begin:end], graph.dst[begin:end])))
-    return sampler.sample_blocks(roots, torch.full_like(roots, snapshot_id))[0]
+def _snapshot_tcsr(view, edge_to_position, begin, end, num_nodes):
+    positions = torch.sort(edge_to_position[begin:end]).values
+    rows = view["edge_order"].index_select(0, positions)
+    dst = view["src"].index_select(0, rows)
+    counts = torch.bincount(dst, minlength=num_nodes)
+    indptr = torch.cat((torch.zeros(1, dtype=torch.long), counts.cumsum(0)))
+    nodes = torch.arange(num_nodes)
+    return GraphBlock(src_nodes=nodes, dst_nodes=nodes,
+        edge_ids=view["edge_ids"].index_select(0, rows), format="csc", indptr=indptr,
+        indices=view["indices"].index_select(0, positions), num_src=num_nodes, num_dst=num_nodes,
+        edata={"ts": view["ts"].index_select(0, rows)}, exec_mode="LOCAL_FULL")
 
 
 def _edge_ids(batch):
@@ -99,6 +107,14 @@ def run(args):
         bidirectional=False, shared=False, node_is_hot=hot_mask)
     tcsr_build = time.perf_counter() - t0
     t0 = time.perf_counter()
+    snapshot_tcsr = build_temporal_csr_view(src=graph.dst, dst=graph.src, ts=graph.ts,
+        edge_ids=graph.edge_ids, node_dist_index=torch.arange(nodes), edge_dist_index=edge_dist,
+        node_to_chunk=node_chunk, edge_chunk=edge_chunk, time_ptr_2=ptr, num_nodes=nodes,
+        bidirectional=False, shared=False, node_is_hot=hot_mask)
+    edge_to_position = torch.empty(edges, dtype=torch.long)
+    edge_to_position[snapshot_tcsr["edge_order"]] = torch.arange(edges)
+    snapshot_tcsr_build = time.perf_counter() - t0
+    t0 = time.perf_counter()
     snapshots = build_snapshot_csc_views(src=graph.src, dst=graph.dst, ts=graph.ts,
         edge_ids=graph.edge_ids, edge_dist_index=edge_dist, node_master=node_master,
         hot_node_ids=hot, node_is_hot=hot_mask, node_to_chunk=node_chunk, time_ptr_2=ptr,
@@ -117,19 +133,9 @@ def run(args):
     sid = len(snapshots) - 1 if args.snapshot < 0 else min(args.snapshot, len(snapshots) - 1)
     begin, end = map(int, ptr[sid].tolist())
     snapshot_nodes = torch.cat((graph.src[begin:end], graph.dst[begin:end]))
-    full_fanout = max(1, int(torch.bincount(snapshot_nodes, minlength=nodes).max().item()))
-    store = StoreBundle(
-        graph=GraphStore(num_nodes=nodes, prepare={"meta": {"world_size": 1},
-            "partition": {"node_dist_index": torch.arange(nodes), "node_is_hot": hot_mask},
-            "time_ptr_2": ptr, "temporal_csr_view": tcsr, "snapshot_csc_views": [{"slices": snapshots}]}),
-        features=FeatureManager(), labels=LabelStore())
-    t0 = time.perf_counter()
-    snapshot_sampler = build_native_sampler(store, tcsr, fanouts=(full_fanout,), num_layers=1,
-        options={"policy": "snapshot_uniform", "workers": 1}, snapshot=True)
-    sampler_build = time.perf_counter() - t0
     event_snap, event_snap_time = _time(lambda: _snapshot_event(graph, begin, end), args.repeats)
     tcsr_snap, tcsr_snap_time = _time(
-        lambda: _snapshot_tcsr(snapshot_sampler, graph, begin, end, sid), args.repeats)
+        lambda: _snapshot_tcsr(snapshot_tcsr, edge_to_position, begin, end, nodes), args.repeats)
     csc_snap, csc_time = _time(lambda: snapshot_row_to_graph_block(snapshots[sid]), args.repeats)
     snapshot_batches = [Batch(mode="snapshot", graph=b) for b in (event_snap, tcsr_snap, csc_snap)]
     expected = _edge_ids(snapshot_batches[0])
@@ -140,10 +146,9 @@ def run(args):
     result = {"data": "synthetic" if args.synthetic_edges else str(args.data), "num_nodes": nodes, "num_edges": int(edges),
         "query": {"batch_roots": int(roots.numel()), "fanout": args.fanout,
                   "snapshot": sid, "snapshot_edges": end - begin,
-                  "snapshot_nodes": int(torch.unique(snapshot_nodes).numel()),
-                  "snapshot_full_fanout": full_fanout},
+                  "snapshot_nodes": int(torch.unique(snapshot_nodes).numel())},
         "build_seconds": {"event": 0.0, "temporal_csr": tcsr_build,
-                          "temporal_csr_sampler": sampler_build,
+                          "snapshot_temporal_csr": snapshot_tcsr_build,
                           "snapshot_csc": snapshot_build},
         "model_ready_seconds": {"history_event": event_time, "history_tcsr": tcsr_time,
             "snapshot_event": event_snap_time, "snapshot_tcsr": tcsr_snap_time,
@@ -152,7 +157,7 @@ def run(args):
         str(n): {"history_event": n * event_time["median_seconds"],
                  "history_tcsr": tcsr_build + n * tcsr_time["median_seconds"],
                  "snapshot_event": n * event_snap_time["median_seconds"],
-                 "snapshot_tcsr": tcsr_build + sampler_build + n * tcsr_snap_time["median_seconds"],
+                 "snapshot_tcsr": snapshot_tcsr_build + n * tcsr_snap_time["median_seconds"],
                  "snapshot_csc": snapshot_build + n * csc_time["median_seconds"]}
         for n in (1, 5, 10, 50, 100)}
     args.output.parent.mkdir(parents=True, exist_ok=True)
