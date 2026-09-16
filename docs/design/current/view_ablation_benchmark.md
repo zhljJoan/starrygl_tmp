@@ -10,8 +10,10 @@ Two comparisons are measured:
 2. Event-to-snapshot, Event-bounded T-CSR-to-CSC construction, and prepared
    Snapshot-CSC access for one complete snapshot. The Event interval supplies
    the physical edge range and active nodes. A prepared edge-row-to-T-CSR-position
-   map gathers the neighbor indices and constructs `indptr` directly, without
-   sampling, reverse expansion, MFG compaction, or node renumbering.
+   map gathers the neighbor indices and constructs `indptr` directly. The path
+   then performs the required node-row mapping, normalization, feature-row and
+   route construction before producing `GraphBlock`; it does not sample,
+   reverse-expand, compact an MFG, or deduplicate edges.
 
 Timing ends after construction of the `GraphBlock` and `Batch` accepted by a
 model. Model forward, feature communication, and optimization are outside this

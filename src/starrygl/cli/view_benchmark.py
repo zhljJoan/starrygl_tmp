@@ -13,7 +13,6 @@ from starrygl.prepare import load_graph_data
 from starrygl.prepare.snapshot_csc import build_snapshot_csc_views
 from starrygl.prepare.temporal_csr import build_temporal_csr_view
 from starrygl.runtime.dataloader.blocks import event_rows_to_graph_block, snapshot_row_to_graph_block
-from starrygl.view import GraphBlock, graph_block_from_coo
 
 
 def _time(fn, repeats: int):
@@ -50,28 +49,59 @@ def _tcsr_recent(view, roots, fanout):
     return event_rows_to_graph_block(view, rows, extra_nodes=roots)
 
 
+def _snapshot_block(src, dst, ts, edge_ids, num_nodes):
+    edge_count = int(src.numel())
+    row = build_snapshot_csc_views(src=src, dst=dst, ts=ts, edge_ids=edge_ids,
+        edge_dist_index=torch.arange(edge_count), node_master=torch.zeros(num_nodes, dtype=torch.long),
+        hot_node_ids=torch.empty(0, dtype=torch.long), node_is_hot=torch.zeros(num_nodes, dtype=torch.bool),
+        node_to_chunk=torch.zeros(num_nodes, dtype=torch.long),
+        time_ptr_2=torch.tensor([[0, edge_count]]), num_nodes=num_nodes, world_size=1)[0]["slices"][0]
+    return snapshot_row_to_graph_block(row)
+
+
 def _snapshot_event(graph, begin, end):
-    rows = torch.arange(begin, end)
-    return graph_block_from_coo(src=graph.src[rows], dst=graph.dst[rows],
-        edge_ids=graph.edge_ids[rows], num_nodes=graph.num_nodes, format="csc", materialize_coo=False)
+    return _snapshot_block(graph.src[begin:end], graph.dst[begin:end], graph.ts[begin:end],
+        graph.edge_ids[begin:end], graph.num_nodes)
 
 
 def _snapshot_tcsr(view, edge_to_position, begin, end, num_nodes):
     positions = torch.sort(edge_to_position[begin:end]).values
     rows = view["edge_order"].index_select(0, positions)
+    src = view["indices"].index_select(0, positions)
     dst = view["src"].index_select(0, rows)
-    counts = torch.bincount(dst, minlength=num_nodes)
-    indptr = torch.cat((torch.zeros(1, dtype=torch.long), counts.cumsum(0)))
+    weight = torch.ones(src.numel())
+    out_degree = torch.ones(num_nodes).index_add_(0, src, weight)
+    in_degree = torch.ones(num_nodes).index_add_(0, dst, weight)
     nodes = torch.arange(num_nodes)
-    return GraphBlock(src_nodes=nodes, dst_nodes=nodes,
-        edge_ids=view["edge_ids"].index_select(0, rows), format="csc", indptr=indptr,
-        indices=view["indices"].index_select(0, positions), num_src=num_nodes, num_dst=num_nodes,
-        edata={"ts": view["ts"].index_select(0, rows)}, exec_mode="LOCAL_FULL")
+    counts = torch.bincount(dst, minlength=num_nodes)
+    row = {"snapshot_id": 0, "src_nodes": nodes, "dst_nodes": nodes,
+        "edge_ids": view["edge_ids"].index_select(0, rows),
+        "ts": view["ts"].index_select(0, rows),
+        "indptr": torch.cat((torch.zeros(1, dtype=torch.long), counts.cumsum(0))),
+        "indices": src, "node_chunk": torch.zeros(num_nodes, dtype=torch.long),
+        "node_feature_ids": nodes, "node_feature_row": nodes, "src_feature_row": nodes,
+        "edge_feature_ids": view["edge_feature_ids"].index_select(0, rows),
+        "edge_feature_row": view["edge_feature_ids"].index_select(0, rows),
+        "edge_gcn_norm": torch.rsqrt(out_degree[src] * in_degree[dst]),
+        "self_gcn_norm": torch.rsqrt(out_degree * in_degree),
+        "route": {"send_sizes": [0], "recv_sizes": [0],
+                  "send_index": torch.empty(0, dtype=torch.long),
+                  "recv_src_row": torch.empty(0, dtype=torch.long)}}
+    return snapshot_row_to_graph_block(row)
 
 
 def _edge_ids(batch):
     block = batch.graph if batch.graph is not None else batch.blocks[0][0]
-    return torch.unique(block.edge_ids.long(), sorted=True)
+    return torch.sort(block.edge_ids.long()).values
+
+
+def _assert_snapshot_parity(blocks):
+    expected = blocks[0]
+    for block in blocks[1:]:
+        for name in ("src_nodes", "dst_nodes", "edge_ids", "indptr", "indices"):
+            torch.testing.assert_close(getattr(block, name), getattr(expected, name))
+        torch.testing.assert_close(block.edata["gcn_norm"], expected.edata["gcn_norm"])
+        torch.testing.assert_close(block.edata["self_gcn_norm"], expected.edata["self_gcn_norm"])
 
 
 def run(args):
@@ -142,6 +172,7 @@ def run(args):
     if any(not torch.equal(expected, _edge_ids(batch)) for batch in snapshot_batches[1:]):
         counts = [int(_edge_ids(batch).numel()) for batch in snapshot_batches]
         raise RuntimeError(f"snapshot paths produced different edges: event/tcsr/csc={counts}")
+    _assert_snapshot_parity((event_snap, tcsr_snap, csc_snap))
 
     result = {"data": "synthetic" if args.synthetic_edges else str(args.data), "num_nodes": nodes, "num_edges": int(edges),
         "query": {"batch_roots": int(roots.numel()), "fanout": args.fanout,

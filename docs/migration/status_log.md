@@ -7465,9 +7465,10 @@ pooled AP and other explicitly deferred plan items remain unimplemented.
   T-CSR history access was 44.4x faster than Event scanning. For the last
   snapshot, Event identified the 80,833-edge interval and 1,686 active nodes;
   the destination-oriented T-CSR used a prepared physical-row position map to
-  gather neighbor indices and build CSC directly in 1.73 ms. Prepared
-  Snapshot-CSC wrapped the model-ready row in 1.10 ms, a 1.57x hot-path gain.
-  No native sampling, reverse expansion, MFG compaction, or node renumbering is
-  included in the T-CSR snapshot path.
+  gather neighbor indices, build CSC, map node rows, compute normalization and
+  feature rows, construct the route, and produce `GraphBlock` in 3.79 ms.
+  Prepared Snapshot-CSC wrapped the model-ready row in 1.07 ms, a 3.53x
+  hot-path gain. No native sampling, reverse expansion, MFG compaction, or edge
+  deduplication is included in the T-CSR snapshot path.
 - Unresolved risks: GPU-resident feature materialization remains to be measured;
   CSV parse time is intentionally outside access timing.
