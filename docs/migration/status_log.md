@@ -34,11 +34,29 @@ Verification:
   passed; touched modules remain below 500 lines.
 - The new check draws from overlapping local/global candidate sets and verifies
   that equal final IDs receive equal callable weights regardless of branch.
+- Fresh four-A40 WIKI, 10 epochs, one shared train -> validation -> test
+  lifecycle per epoch: final StarryGL/MemShare validation AP is
+  0.92619/0.93367 and test AP is 0.91321/0.91886; test AUC is
+  0.90853/0.91527. The test AP/AUC gaps are 0.565/0.674 percentage points.
+  Random IDs are not paired, but candidate distributions, final-ID weights,
+  splits, metric implementation, and lifecycle are aligned.
+- In the no-evaluation timing run, StarryGL final rank-mean BCE is 0.88886
+  versus the fresh native 0.89238 (0.4% difference). Epochs 2--10 take
+  0.39365 s/epoch versus native 0.25505 s/epoch: 54.3% slower. The callable
+  adds only 0.6% over the prior StarryGL timing, so it is not the performance
+  bottleneck.
+- Outputs: `/tmp/starrygl_tgn_62e25df_{prepare,weighted_e10,weighted_eval_e10}`
+  and `/tmp/memshare_native_eval_20260922`. The existing thin diagnostic
+  wrapper under `../paper_method/rebuttal_20260913/` only injects the callable
+  and records evaluation; it does not replace `Trainer.fit/evaluate`.
 
 Unresolved risks:
 
-- The fresh WIKI benchmark must pass the MemShare correction callable and use
-  common fixed evaluation negatives before accuracy parity can be claimed.
+- WIKI is one pilot and does not prove exact state-trace or multi-dataset
+  parity. Fixed negative-ID replay is unnecessary for the requested stochastic
+  tolerance but remains useful for a stricter numerical diagnostic.
+- TGN performance is still not at MemShare parity; profiling must target the
+  common accessor/dependency/model path rather than negative weighting.
 
 ## 2026-09-22: Align event negative pools with node replicas
 
