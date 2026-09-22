@@ -1,5 +1,26 @@
 # Migration Status Log
 
+## 2026-09-22: Reject unconditional bounded-state routes
+
+Latest state:
+
+- Event/Snapshot share the dependency-access contract.  The candidate removed
+  the per-batch activity all-reduce before distributed combined memory/mailbox
+  hydration and always enters its existing globally ordered owner route; ranks
+  with complete reads sent empty payloads.  It was removed after timing.
+- Single-rank local reads are unchanged.  No cache interface, route type,
+  model branch, training loop, DGL graph, or native operator is introduced.
+
+Efficiency alternatives considered: the existing Torch/NCCL owner route is
+already required whenever any rank misses.  Another readiness collective is
+pure overhead in that case; free-form p2p or a second scheduler would weaken
+ordering.  However, focused checks passed 22 with 7 skips and the two-rank
+Gloo combined/empty-payload checks passed 2 per rank, while four-A40 WIKI/TGN
+epochs 2--10 took 0.33174 s/epoch versus the adjacent 0.32248 control.  The
+probe is evidently hidden and avoids exposed empty routes, so production keeps
+it.  Accuracy and DCRNN were not rerun.  Output:
+`/tmp/starrygl_tgn_scheduled_state_read_candidate_e10`.
+
 ## 2026-09-22: Reject device-resident dependency routes
 
 Latest state:

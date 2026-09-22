@@ -1,5 +1,22 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject unconditional bounded-state routes (2026-09-22)
+
+The canonical path remains accessor -> Batch -> dependency access -> model ->
+task -> state update.  Bounded TGN state hydration already uses one globally
+ordered owner route with empty payloads for ranks whose owner/shared-hot rows
+are complete.  Its preceding `collective_needed` all-reduce only decides
+whether that route is globally empty; on WIKI every batch enters the route, so
+the probe is redundant.
+
+The candidate made distributed combined memory/mailbox reads always enter the
+existing owner route, while single-rank reads retained the local fast path.  It
+added no cache, route, model path, DGL graph, or native operator.  Focused and
+two-rank empty-payload checks passed, but four-A40 WIKI measured 0.33174
+s/epoch versus the adjacent 0.32248 control.  The small readiness reduction was
+already hidden while unconditional empty routes exposed more work, so the
+candidate was removed.  DCRNN's Snapshot path was unchanged.
+
 ## Reject device-resident dependency routes (2026-09-22)
 
 The common path remains prepared window -> accessor -> Batch -> dependency
