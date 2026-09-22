@@ -1,5 +1,37 @@
 # Migration Status Log
 
+## 2026-09-22: Reject public coalesced framework gradients
+
+Latest state:
+
+- The common model -> task -> backward -> optimizer boundary currently issues
+  one synchronous all-reduce per parameter.  On unchanged `b073803`, disabling
+  only framework gradient synchronization measured 0.31017 s/epoch (median
+  0.30747) over four-A40 WIKI epochs 2--30, versus the adjacent synchronized
+  control's 0.32146 (median 0.31815).  The maximum available gain is 3.5%.
+- The bounded candidate used public Torch coalesced all-reduce only when every
+  gradient has one dtype/device; mixed representations retain the current exact
+  loop.  Parameter order, averaging, missing-gradient materialization, empty
+  ranks and optimizer semantics remained unchanged.  It was removed after the
+  accuracy gate failed.
+
+Efficiency alternatives considered: DDP wrapping would split runtime-owned
+Snapshot scans from direct Event forwards; backward hooks add an ordering
+protocol; flatten/unflatten copies all gradients.  Reusing one native collective
+at the existing shared boundary was the smallest screen.  Focused local checks
+passed 5; two-rank missing/empty Gloo checks passed 3 per rank.  Four-A40
+WIKI/TGN rank-max epochs 2--30 improved from 0.32146 s/epoch (median 0.31815)
+to 0.31449 (median 0.31373), a 2.17% mean gain.  Adjacent four-A40 exact DCRNN
+W=1 epochs 2--10 improved from 3.24579 to 3.19674 s/epoch with the same final
+MSE 0.06135181.  However, the TGN evaluation repeat ended at test AP/AUC
+0.90751/0.90139, 1.135/1.388 percentage points below native MemShare and outside
+the retained accuracy gate.  The public Torch operator also emits a deprecation
+warning.  Production/tests were restored exactly; the prior eight-A40 DCRNN
+1.9975 s/epoch result therefore remains applicable.  Outputs:
+`/tmp/starrygl_tgn_no_gradient_sync_b073803_e30`,
+`/tmp/starrygl_tgn_coalesced_gradient_{candidate_e30,eval_e10}`, and
+`/tmp/starrygl_dcrnn_coalesced_gradient{,_adjacent_control}_w1_e10`.
+
 ## 2026-09-22: Reject packed combined owner-state responses
 
 Latest state:

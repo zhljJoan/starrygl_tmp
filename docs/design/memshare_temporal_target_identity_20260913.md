@@ -1,5 +1,20 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject public coalesced framework gradients (2026-09-22)
+
+The canonical model -> task -> backward -> optimizer path currently reduces
+every parameter separately after backward.  A same-source 30-epoch diagnostic
+without framework gradient synchronization bounds its cost at 0.31017 versus
+0.32146 s/epoch; this is only 3.5% of the TGN time, not the parity gap.
+
+The candidate used PyTorch's existing coalesced all-reduce at that one shared
+optimizer boundary and kept the per-parameter path for mixed dtype/device
+models.  TGN timing improved from 0.32146 to 0.31449 s/epoch and adjacent
+four-A40 DCRNN from 3.24579 to 3.19674, but TGN test AP/AUC fell to
+0.90751/0.90139.  The public operator also emits a deprecation warning in the
+installed Torch.  The candidate was removed: no DDP wrapper, hook schedule,
+bucket object, configuration or custom kernel remains.
+
 ## Reject packed combined owner-state responses (2026-09-22)
 
 The shared path remains dependency access -> Batch -> model.  The existing
