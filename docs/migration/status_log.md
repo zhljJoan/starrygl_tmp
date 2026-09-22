@@ -1,5 +1,27 @@
 # Migration Status Log
 
+## 2026-09-22: Reject device-resident dependency routes
+
+Latest state:
+
+- Prepare -> accessor -> Batch -> dependency access -> model -> task -> state
+  update remains the common path.  The candidate aligned dependency-ID
+  placement with an already CUDA-resident feature cache before the shared
+  feature launcher, then was removed after the timing gate failed.
+- The existing prefetch stream and Torch transfer are reused.  CPU feature
+  caches remain unchanged; no cache API, route type, collective, model path,
+  DGL graph, or native operator is added.
+
+Verification:
+
+- Focused loader/feature/model checks passed 46 with 3 skips; compile and diff
+  checks passed while the candidate was present.
+- Four-A40 WIKI/TGN epochs 2--10 measured 0.31957 and 0.32772 s/epoch for the
+  candidate versus 0.32248 for the adjacent control.  The pooled candidate
+  mean is 0.32365, so moving IDs early is not retained.  Accuracy and DCRNN
+  campaigns were skipped after the timing gate failed.  Outputs are
+  `/tmp/starrygl_tgn_device_route_{candidate,candidate2,adjacent_control}_e10`.
+
 ## 2026-09-22: Reject fused CUDA Adam
 
 Latest state:

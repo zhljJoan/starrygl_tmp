@@ -1,5 +1,22 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject device-resident dependency routes (2026-09-22)
+
+The common path remains prepared window -> accessor -> Batch -> dependency
+access -> model -> task -> state update.  Event and Snapshot already share the
+same feature launcher; the only boundary here is whether the configured feature
+cache is resident on CUDA.  In that case sampled node and edge dependency IDs
+should enter the existing launcher on CUDA too.  Keeping CPU IDs currently
+forces GPU row-map lookup results back through CPU before NCCL copies them to
+CUDA again.
+
+The candidate used one public Torch transfer on the existing prefetch stream
+before the existing node/edge launchers.  CPU caches stayed unchanged, and it
+added no route/cache interface, model branch, collective, DGL reconstruction,
+or custom operator.  Focused checks passed, but two four-A40 WIKI runs averaged
+0.31957 and 0.32772 s/epoch; pooled 0.32365 was slower than the adjacent
+0.32248 control.  The implementation and its test were removed.
+
 ## Static event supervision schedule (2026-09-22)
 
 The shared path remains Prepare task rows -> event accessor -> Batch ->
