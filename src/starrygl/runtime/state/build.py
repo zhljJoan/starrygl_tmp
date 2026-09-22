@@ -81,9 +81,12 @@ def build_state_managers(
             else manager
         )
         if kind == "neighbor_recurrent" and snapshot and (stale or window_size > 1):
-            from starrygl.runtime.memory.snapshot import bind_snapshot_history
+            from starrygl.runtime.memory.snapshot import bind_snapshot_cache_channel, bind_snapshot_history
             bind_snapshot_history(managers[kind], store, hot, window_size=window_size)
             if stale:
+                cell = getattr(model, "runtime_cell", None)
+                for channel in getattr(cell, "cache_channels", {}):
+                    bind_snapshot_cache_channel(managers[kind], channel, shape[-1])
                 managers[kind].change_filter = _refresh_filter(
                     config, shape[-1], int(managers[kind].snapshot_boundary_nodes.numel()))
                 if managers[kind].change_filter is not None:

@@ -41,6 +41,7 @@ class WindowScanResult:
     final_block: GraphBlock
     window_embeddings: tuple[Tensor, ...]
     state_history: tuple[tuple[Tensor, int, Tensor], ...] = ()
+    cache_history: Mapping[str, tuple[tuple[Tensor, int, Tensor], ...]] | None = None
 
 
 @dataclass(frozen=True)

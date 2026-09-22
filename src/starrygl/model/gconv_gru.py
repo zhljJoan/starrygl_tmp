@@ -109,6 +109,8 @@ class GConvGRUModel(StarryModel):
             aux["window_logits"] = window_logits
         if scan.state_history:
             aux["snapshot_states"] = scan.state_history
+        if scan.cache_history:
+            aux["snapshot_cache_channels"] = scan.cache_history
         return ModelOutput(
             embeddings=embeddings,
             logits=logits,
@@ -132,7 +134,8 @@ class GConvGRUModel(StarryModel):
             node_ids=node_ids,
             values=state,
             timestamps=_state_timestamps(batch, node_ids, state),
-            metadata={"snapshot_states": output.aux["snapshot_states"]} if "snapshot_states" in output.aux else {},
+            metadata={key: output.aux[key] for key in ("snapshot_states", "snapshot_cache_channels")
+                      if key in output.aux},
         )
 
 

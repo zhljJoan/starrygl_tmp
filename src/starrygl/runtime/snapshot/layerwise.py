@@ -248,11 +248,14 @@ def materialize_coupled_cell(cell, blocks, x, previous):
         return cell.materialize(blocks, {"x": x, "h_prev": previous})
     block = blocks[-1]
     update, reset = gates(block, x, previous)
-    reset_src = materialize_embedding_src_async(
-        block, reset, comm=block.cache.get("comm"), name="snapshot_reset_gate",
+    count = int(block.num_dst or block.dst_nodes.numel())
+    candidate_input = reset * previous[:count]
+    candidate_input_src = materialize_embedding_src_async(
+        block, candidate_input, comm=block.cache.get("comm"), name="snapshot_candidate_input",
     ).wait()
-    candidate = cell.materialize_candidate(block, x, previous, reset_src)
-    return {"update": update, "candidate": candidate, "state_like": candidate}, block
+    candidate = cell.materialize_candidate_input(block, x, candidate_input_src)
+    return {"update": update, "candidate": candidate, "state_like": candidate,
+            "candidate_input": candidate_input}, block
 
 
 def _route_from_block(block: GraphBlock) -> Route | None:

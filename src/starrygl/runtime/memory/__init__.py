@@ -190,6 +190,7 @@ class AsyncMemoryCommitter:
         self.commit_count = 0
         self.snapshot_history = None
         self.snapshot_shared_history = None
+        self.snapshot_cache_channels = {}
         self.pending_snapshot_pushes = []
         self._profile_counters: dict[str, int] = {}
         self._executor = (
@@ -276,6 +277,8 @@ class AsyncMemoryCommitter:
         if self.snapshot_history is not None:
             self.snapshot_history.reset()
             self.snapshot_shared_history.reset()
+            for history in self.snapshot_cache_channels.values():
+                history.reset()
             self.snapshot_version = 0
 
     def commit(self, delta: StateDelta) -> None:

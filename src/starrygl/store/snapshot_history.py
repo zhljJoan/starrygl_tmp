@@ -45,16 +45,30 @@ class SnapshotHistory:
 
     def read(self, node_ids: Tensor, version: int | Tensor) -> Tensor:
         rows = self.row_map[node_ids]
-        versions = self.packets[:, rows, -1]
-        valid = self.valid[:, rows] & (versions <= version)
+        present = rows >= 0
+        if not int(self.node_ids.numel()):
+            return self.packets.new_zeros((int(node_ids.numel()), 2 * self.dim + 2))
+        safe_rows = rows.clamp_min(0)
+        versions = self.packets[:, safe_rows, -1]
+        valid = self.valid[:, safe_rows] & present.unsqueeze(0) & (versions <= version)
         selected = torch.where(valid, versions, -1).argmax(0)
-        packets = self.packets[selected, rows]
+        packets = self.packets[selected, safe_rows]
         return packets.masked_fill(~valid.any(0)[:, None], 0)
+
+    def predict(self, node_ids: Tensor, version: int | Tensor) -> Tensor:
+        """Extrapolate the latest causal value with its cumulative mean increment."""
+        packets = self.read(node_ids, version)
+        age = torch.as_tensor(version, device=packets.device, dtype=packets.dtype) - packets[:, -1]
+        return packets[:, :self.dim] + age.unsqueeze(1) * packets[:, self.dim:2 * self.dim]
 
     @torch.no_grad()
     def update(self, node_ids: Tensor, version: int, values: Tensor) -> None:
         if not self.window_start < version <= self.window_start + self.window_size:
             raise ValueError("snapshot output is outside the active history window")
+        present = self.row_map[node_ids] >= 0
+        if not bool(present.any().item()):
+            return
+        node_ids, values = node_ids[present], values[present]
         previous = self.read(node_ids, version - 1)
         count = previous[:, -2:-1] + 1
         gap = version - previous[:, -1:]
@@ -66,6 +80,10 @@ class SnapshotHistory:
     @torch.no_grad()
     def install(self, node_ids: Tensor, packets: Tensor) -> None:
         rows = self.row_map[node_ids]
+        present = rows >= 0
+        if not bool(present.any().item()):
+            return
+        rows, packets = rows[present], packets[present]
         versions = packets[:, -1].long()
         slots = torch.where(versions <= self.window_start, 0, 1 + (versions - 1) % self.window_size)
         keep = (versions >= 0) & (versions <= self.window_start + self.window_size)

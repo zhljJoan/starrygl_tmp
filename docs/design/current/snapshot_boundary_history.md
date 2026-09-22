@@ -1,5 +1,46 @@
 # Sliding-window boundary cache
 
+## 2026-09-22: versioned intermediate cache channels
+
+The existing `SnapshotHistory` now also backs detached intermediate dependency
+channels. A channel keeps the same window-relative packets—value, cumulative
+mean increment, observation count and producer version—and shares the prepared
+boundary Route and globally ordered publication with recurrent state. It is a
+logical channel, not a new public state kind or cache implementation.
+
+DCRNN bounded-stale execution lowers a second `neighbor_recurrent` dependency,
+`neighbor_recurrent.candidate_input`, consumed before candidate diffusion. The
+cell produces `q_t = reset_t * h_(t-1)`. Current local destination rows use
+`q_t`; remote source rows use the latest causal cached value extrapolated by its
+cumulative mean increment. Exact execution exchanges current `q_t` through the
+existing autograd Route, preserving output and gradient semantics. Other models
+bind no intermediate channel.
+
+Cells declare named channels and optionally implement `materialize_cached(...)`.
+The runtime predicts every declared channel and passes a name-to-tensor mapping;
+it does not recognize DCRNN channel names or formulas. The cell overlays current
+local values and returns observations under the declared names for commit. This
+is the intended integration point for R-GraphSAGE once its recurrence equations
+are available; it does not claim that model is implemented.
+
+Only the union of fixed Route producer and consumer boundary nodes receives
+channel storage. Local non-boundary rows are overlaid from current computation,
+so allocation is `O((W+1) * boundary_nodes * channel_width)`, not full graph
+nodes times model layers. Each real recurrent stage may later bind one channel;
+ordinary GNN layers and diffusion hops do not. The current DCRNN has one stage.
+
+Publication remains at the existing final Batch boundary and packs state and
+channel packets into one Route payload. This validates common storage and
+communication but does not yet claim gate-to-candidate communication overlap;
+moving channel publication to the gate stage requires a separately scheduled
+collective epoch and performance evidence.
+
+Training, evaluation and prediction all use the same hydrate -> encode -> task
+-> `StateDelta` commit path. Epoch reset clears state and every declared cache
+channel after draining communication; stateful validation and prediction keep
+advancing the same versions. Random-draw identity is outside this interface
+gate.
+
 User decision (2026-09-11): retain cumulative increments, learnable gamma and
 selective hot refresh; retain slots by sliding-window position instead of
 allocating one slot for every dataset timestamp. Archived Flickr results still

@@ -3,6 +3,8 @@ from __future__ import annotations
 import torch
 from torch import nn
 
+from starrygl.utils.index import compact_lookup_rows
+
 from .gconv_gru import GConvGRUModel
 from .graph_conv import edge_rows
 
@@ -65,6 +67,7 @@ class DCRNNCell(nn.Module):
     reads_neighbor_state = True
     state_kind = "neighbor_recurrent"
     state_key = "neighbor_recurrent"
+    cache_channels = {"candidate_input": "increment"}
 
     def __init__(self, hidden_dim: int, diffusion_steps: int = 2):
         super().__init__()
@@ -82,7 +85,27 @@ class DCRNNCell(nn.Module):
         return self.gates(block, torch.cat((x, previous), -1)).sigmoid().chunk(2, -1)
 
     def materialize_candidate(self, block, x, previous, reset):
-        return self.candidate(block, torch.cat((x, reset * previous), -1)).tanh()
+        return self.materialize_candidate_input(block, x, reset * previous)
+
+    def materialize_candidate_input(self, block, x, candidate_input):
+        return self.candidate(block, torch.cat((x, candidate_input), -1)).tanh()
+
+    def materialize_cached(self, block, x, previous_src, previous_dst, cached):
+        """Consume runtime-predicted channels while keeping DCRNN math local."""
+        update, reset = self.materialize_gates(block, x, previous_src)
+        candidate_input = reset * previous_dst
+        candidate_src = cached["candidate_input"]
+        rows = compact_lookup_rows(block.src_nodes, block.dst_nodes)
+        present = rows >= 0
+        candidate_src = candidate_src.index_copy(
+            0, rows[present], candidate_input.index_select(0, present.nonzero(as_tuple=True)[0]))
+        candidate = self.materialize_candidate_input(block, x, candidate_src)
+        return {
+            "update": update,
+            "candidate": candidate,
+            "state_like": candidate,
+            "candidate_input": candidate_input,
+        }, block
 
     def local_forward(self, block, src, dst):
         return src["update"] * dst["h_prev"] + (1 - src["update"]) * src["candidate"]

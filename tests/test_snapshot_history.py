@@ -33,6 +33,52 @@ def test_history_is_causal_and_recomputed_time_does_not_inflate_increment():
     assert not history.valid[1:].any()
 
 
+def test_history_predicts_any_cache_channel_from_cumulative_increment():
+    nodes = torch.tensor([0, 1])
+    history = SnapshotHistory(nodes, 2, 4, 1)
+    history.update(nodes, 1, torch.tensor([[2.], [3.]]))
+    history.update(nodes, 2, torch.tensor([[4.], [6.]]))
+    torch.testing.assert_close(history.predict(nodes, 4), torch.tensor([[8.], [12.]]))
+
+
+def test_coupled_scan_overlays_current_local_candidate_input_on_stale_remote_prediction():
+    from starrygl.runtime.snapshot.coupled import run_coupled_window_scan
+
+    class Cell:
+        reads_neighbor_state = True
+        state_key = "neighbor_recurrent"
+        cache_channels = {"candidate_input": "increment"}
+
+        def materialize_cached(self, block, x, previous_src, previous_dst, cached):
+            del x, previous_src
+            candidate_input = previous_dst
+            candidate_src = cached["candidate_input"].index_copy(0, torch.tensor([0]), candidate_input)
+            self.observed = candidate_src
+            return {"candidate": candidate_src[:1], "state_like": candidate_src[:1],
+                    "candidate_input": candidate_input}, block
+
+        def local_forward(self, block, src, dst):
+            return src["candidate"]
+
+    block = sg.GraphBlock(src_nodes=torch.tensor([0, 1]), dst_nodes=torch.tensor([0]),
+                          edge_ids=torch.tensor([0]), format="coo", row=torch.tensor([1]),
+                          col=torch.tensor([0]), num_src=2, num_dst=1)
+    block.cache["snapshot_id"] = 2
+    state_packet = torch.tensor([[2., 0., 1., 2.], [4., 0., 1., 2.]])
+    candidate_packet = torch.tensor([[1., 1., 1., 1.], [3., 2., 1., 1.]])
+    batch = sg.Batch(mode="snapshot", graph=block, blocks=((block,),),
+                     features={"x": (torch.ones(2, 1),)}, state={
+                         "neighbor_recurrent_snapshots": (state_packet,),
+                         "neighbor_recurrent_window_state": (state_packet[:, :1],),
+                         "snapshot_cache_channels": {"candidate_input": (candidate_packet,)},
+                     })
+    cell = Cell()
+    result = run_coupled_window_scan(batch, input_project=lambda value: value, cell=cell)
+    torch.testing.assert_close(cell.observed, torch.tensor([[2.], [7.]]))
+    assert result.cache_history["candidate_input"][0][1] == 3
+    torch.testing.assert_close(result.cache_history["candidate_input"][0][2], torch.tensor([[2.]]))
+
+
 def test_window_slots_wrap_without_resetting_cumulative_increment():
     nodes = torch.arange(2)
     history = SnapshotHistory(nodes, 2, 3, 1)
@@ -276,7 +322,7 @@ def test_history_capacity_uses_resolved_sliding_window_arguments():
 
 @pytest.mark.parametrize("model_name", ["gconv_gru", "dcrnn"])
 @pytest.mark.skipif(int(os.environ.get("WORLD_SIZE", "1")) != 2, reason="requires two torchrun ranks")
-def test_distributed_compile_prepare_and_sliding_fit(model_name):
+def test_distributed_compile_prepare_and_sliding_train_inference(model_name):
     cuda = os.environ.get("STARRYGL_TEST_NCCL") == "1"
     device = torch.device("cuda", int(os.environ["LOCAL_RANK"])) if cuda else torch.device("cpu")
     if cuda:
@@ -326,6 +372,18 @@ def test_distributed_compile_prepare_and_sliding_fit(model_name):
         assert runtime.snapshot_history.packets.shape[0] == 3
         assert runtime.snapshot_history.valid[1:].any()
         assert runtime.snapshot_history.packets[:, :, -2].max() >= 2
+        if model_name == "dcrnn":
+            candidate = runtime.snapshot_cache_channels["candidate_input"]
+            assert candidate.valid[1:].any()
+            assert candidate.packets[:, :, -2].max() >= 2
+        assert not runtime.pending_snapshot_pushes
+        validation = trainer.evaluate(rank=dist.get_rank(), device=device,
+                                      sampler_options={"access_pipeline": True, "snapshot_reverse_direction": False})
+        assert validation.steps == 1 and torch.isfinite(torch.tensor(validation.loss))
+        assert runtime.snapshot_version == 6 and not runtime.pending_snapshot_pushes
+        outputs = trainer.predict(rank=dist.get_rank(), device=device,
+                                  sampler_options={"access_pipeline": True, "snapshot_reverse_direction": False})
+        assert len(outputs) == 2 and runtime.snapshot_version == 8
         assert not runtime.pending_snapshot_pushes
         dist.barrier()
     finally:

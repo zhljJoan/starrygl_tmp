@@ -109,6 +109,20 @@ def test_exact_and_approximate_state_dependencies_lower_to_public_consistency() 
     assert approximate_deps["label"].max_staleness == 0
 
 
+def test_dcrnn_stale_candidate_input_reuses_neighbor_dependency_contract() -> None:
+    stale = sg.compile(
+        data_source={"source": "snapshots", "temporal_representation": "snapshot_sequence"},
+        backbone={"name": "dcrnn"},
+        task_segment={"name": "node_regression"},
+        runtime={"temporal_state": {"consistency": "bounded_stale", "max_staleness": 1}},
+    )
+    dependencies = {dependency.name: dependency for dependency in stale.plan.state_dependencies}
+    candidate = dependencies["neighbor_recurrent.candidate_input"]
+    assert candidate.kind == "neighbor_recurrent"
+    assert candidate.stage == "before_candidate"
+    assert candidate.cache_policy == stale.plan.cache_policy
+
+
 def test_backbone_semantics_require_s_without_exposing_read_stage() -> None:
     temporal = sg.compile(
         data_source={"source": "custom"},

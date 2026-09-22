@@ -40,6 +40,7 @@ def lower_dependencies(
     wait_policy: str,
     owner_policy: str,
     state_kind: str,
+    model: Mapping[str, Any] | None = None,
 ) -> tuple[AwaitDependency, ...]:
     exact = dict(freshness_policy="exact", cache_policy="none", wait_policy=wait_policy)
     dependencies = [
@@ -67,6 +68,16 @@ def lower_dependencies(
     elif spec.state == "snapshot_recurrent":
         stage = "before_gcn" if state_kind in {"neighbor_recurrent", "model_recurrent"} else "before_rnn"
         dependencies.append(_dependency(state_kind, stage, **state))
+        if (
+            freshness != "exact"
+            and str((model or {}).get("name", "")).strip().lower().replace("-", "_") == "dcrnn"
+        ):
+            dependencies.append(_dependency(
+                state_kind,
+                "before_candidate",
+                name=f"{state_kind}.candidate_input",
+                **state,
+            ))
 
     if is_edge_task(task):
         dependencies.append(
@@ -98,8 +109,8 @@ def is_edge_task(task: Mapping[str, Any]) -> bool:
     return str(task.get("name", "")).strip().lower() == "edge_prediction"
 
 
-def _dependency(kind: str, stage: str, **policy: Any) -> AwaitDependency:
-    return AwaitDependency(name=kind, kind=kind, stage=stage, **policy)
+def _dependency(kind: str, stage: str, *, name: str | None = None, **policy: Any) -> AwaitDependency:
+    return AwaitDependency(name=kind if name is None else name, kind=kind, stage=stage, **policy)
 
 
 def _has_negative_sampling(task: Mapping[str, Any]) -> bool:
@@ -313,6 +324,7 @@ class ChunkBindingPlanner:
                 wait_policy=wait_policy,
                 owner_policy=owner_policy,
                 state_kind=state_kind,
+                model=model,
             ),
             model_state_key=state_key if state_key is not None else ("s" if requires_state else None),
             model_aggregate_key=model.get("aggregate_key", "h"),

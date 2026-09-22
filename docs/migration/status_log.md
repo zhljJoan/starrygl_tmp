@@ -1,5 +1,75 @@
 # Migration Status Log
 
+## 2026-09-22: Reuse snapshot cache for DCRNN candidate input
+
+Latest state:
+
+- The shared path remains Prepare -> owner task slice -> Snapshot accessor ->
+  Batch -> dependency access -> coupled scan -> task -> state commit. DCRNN's
+  unavoidable specialization is its gate-produced candidate input.
+- Bounded-stale DCRNN now lowers
+  `neighbor_recurrent.candidate_input` at `before_candidate`. The runtime caches
+  `reset * previous_state` with the existing cumulative-increment
+  `SnapshotHistory`; the model remains one direct DCRNN implementation.
+- Exact DCRNN exchanges the same candidate input with the existing autograd
+  Route. Stale execution overlays current local rows on extrapolated detached
+  remote rows. Other models create no empty channel.
+- Coupled runtime no longer recognizes `candidate_input`: it predicts declared
+  channels and calls the cell's optional `materialize_cached(...)` hook. DCRNN
+  owns its gate/candidate formula and local-row overlay. Future R-GraphSAGE can
+  use the same storage/communication hook once its model equations are verified.
+- Channel allocation is limited to the fixed producer/consumer boundary union.
+  State and channel packets share one final-boundary Route payload and global
+  collective order. No full-node channel replica, Python entity loop, new
+  public state kind, cache class, loader or training loop was added.
+
+Efficiency alternatives considered:
+
+- Reusing `SnapshotHistory`, Torch indexing and the prepared Route was selected.
+  A new cache hierarchy, per-layer full-node allocation, DGL kernel change or
+  C++/CUDA operator adds no value to this versioned tensor storage path.
+- Publishing immediately after the gate could expose more overlap, but requires
+  another globally scheduled collective epoch. It is deferred until profiling
+  shows the final-boundary publication is insufficient.
+
+Files modified:
+
+- `src/starrygl/{plan.py,store/snapshot_history.py}`
+- `src/starrygl/model/{dcrnn.py,gconv_gru.py}`
+- `src/starrygl/runtime/{memory/__init__.py,memory/snapshot.py,state/build.py}`
+- `src/starrygl/runtime/snapshot/{coupled.py,layerwise.py,scan.py}`
+- `tests/{test_snapshot_history.py,test_open_compile_plan.py}`
+- `docs/design/current/snapshot_boundary_history.md`
+
+Verification:
+
+- Focused CPU after the generic cell hook: 74 passed, 11 skipped; one unrelated
+  pre-existing stale plan assertion deselected.
+- Two-rank CPU/Gloo: 4 passed per rank, covering exact GConvGRU/DCRNN output and
+  parameter-gradient parity plus bounded-stale compile/Prepare/fit/evaluate/
+  predict. State/cache versions advance continuously through train/val/test and
+  all pending boundary pushes drain.
+- The first lifecycle assertion incorrectly counted two validation snapshots as
+  two evaluation steps and one prediction callback. The real window contract is
+  one two-snapshot evaluation step and two per-window prediction outputs; only
+  the test expectations changed.
+- Random initialization and sampled RNG identity are deliberately not parity
+  gates here. The gate is one training/inference spine, matching state/cache
+  lifecycle, exact-mode math, collective order and successful task execution.
+- Full CPU regression: 533 passed, 10 failed, 49 skipped. Nine failures exactly
+  match the pre-existing main-branch list; the tenth was the sandbox blocking
+  Gloo address resolution. That two-process test passed separately outside the
+  sandbox (1 passed), so this change introduces no new regression failure.
+
+Unresolved risks:
+
+- No GPU memory/throughput measurement or convergence result yet.
+- Publication is still final-Batch-boundary, not gate-stage overlap.
+- Only the current single-stage DCRNN is implemented; future stacked recurrent
+  stages should bind one channel each only when the model exists.
+- R-GraphSAGE model math remains unavailable; this version validates its cache
+  integration point, not the named model or its quality/performance.
+
 ## 2026-09-12: Promote verified rebuttal V3 into the main package
 
 Latest state before implementation:

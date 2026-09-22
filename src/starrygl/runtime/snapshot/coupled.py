@@ -52,6 +52,7 @@ def run_coupled_window_scan(
     external_state_table = _has_external_state_table(batch, cell.state_key)
     snapshots = batch.state.get("neighbor_recurrent_snapshots")
     computed_history = []
+    cache_history: dict[str, list[tuple[Tensor, int, Tensor]]] = {}
     previous_block = None
     for window_id, blocks in enumerate(batch.iter_blocks()):
         x = input_project(_feature_for_window(batch, feature_key, window_id, fallback_feature_key).float())
@@ -94,7 +95,21 @@ def run_coupled_window_scan(
                 block, state.dst_state, comm=block.cache.get("comm"), name="snapshot_exact_previous_state",
             ).wait()
             state = CoupledStateMaterialization(src_state, state.dst_state, state.dst_rows)
-        src, final_block = materialize_coupled_cell(cell, blocks, x, state.src_state)
+        channel_packets = batch.state.get("snapshot_cache_channels", {})
+        if channel_packets and hasattr(cell, "materialize_cached"):
+            cached = {}
+            for name, policy in getattr(cell, "cache_channels", {}).items():
+                if policy != "increment":
+                    raise ValueError(f"unsupported snapshot cache prediction: {policy!r}")
+                packet = channel_packets[name][window_id]
+                dim = (int(packet.shape[1]) - 2) // 2
+                age = packet.new_full(
+                    (packet.shape[0], 1), int(block.cache["snapshot_id"]) + 1) - packet[:, -1:]
+                cached[name] = packet[:, :dim] + age * packet[:, dim:2 * dim]
+            src, final_block = cell.materialize_cached(
+                block, x, state.src_state, state.dst_state, cached)
+        else:
+            src, final_block = materialize_coupled_cell(cell, blocks, x, state.src_state)
         if "h_prev" not in src:
             src = dict(src)
             src["h_prev"] = state.src_state
@@ -106,6 +121,14 @@ def run_coupled_window_scan(
         if snapshots is not None:
             carried_owned = _scatter_state_table(state.src_state, block.src_nodes, block.dst_nodes, updated_dst)
             computed_history.append((block.dst_nodes, int(block.cache["snapshot_id"]) + 1, updated_dst.detach()))
+            bound_channels = batch.state.get("snapshot_cache_channels", {})
+            for name in getattr(cell, "cache_channels", {}):
+                if name not in bound_channels:
+                    continue
+                value = src.get(name)
+                if value is not None:
+                    cache_history.setdefault(name, []).append(
+                        (block.dst_nodes, int(block.cache["snapshot_id"]) + 1, value.detach()))
             previous_block = block
         else:
             carried_owned = (
@@ -125,4 +148,5 @@ def run_coupled_window_scan(
         final_block=final_block,
         window_embeddings=tuple(window_embeddings),
         state_history=tuple(computed_history),
+        cache_history={name: tuple(values) for name, values in cache_history.items()},
     )

@@ -25,6 +25,7 @@ def bind_snapshot_history(runtime, store, hot, *, window_size: int = 1) -> None:
     nodes = present.nonzero(as_tuple=True)[0].to(device)
     runtime.snapshot_history = SnapshotHistory(nodes, store.graph.num_nodes, window_size, manager.values.shape[-1])
     runtime.snapshot_shared_history = SnapshotHistory(hot, store.graph.num_nodes, window_size, manager.values.shape[-1])
+    runtime.snapshot_cache_channels = {}
     runtime.snapshot_exact = not bool(getattr(runtime, "bounded_stale_reads", False))
     runtime.snapshot_version = 0
     runtime.snapshot_send_nodes = nodes.new_empty(0)
@@ -47,6 +48,15 @@ def bind_snapshot_history(runtime, store, hot, *, window_size: int = 1) -> None:
     runtime.skip_remote_non_hot_owner_commit = True
 
 
+def bind_snapshot_cache_channel(runtime, name: str, dim: int) -> None:
+    """Reuse the snapshot history layout for a detached intermediate dependency."""
+    base = runtime.snapshot_history
+    nodes = torch.unique(torch.cat((runtime.snapshot_boundary_nodes, runtime.snapshot_recv_nodes)), sorted=True)
+    runtime.snapshot_cache_channels[str(name)] = SnapshotHistory(
+        nodes, base.row_map.numel(), base.window_size, int(dim),
+    )
+
+
 def hydrate_snapshot_history(batch, runtime) -> None:
     history = runtime.snapshot_history
     manager = getattr(runtime, "memory_manager", runtime)
@@ -64,7 +74,13 @@ def hydrate_snapshot_history(batch, runtime) -> None:
     history.advance(int(blocks[0].cache["snapshot_id"]))
     shared = runtime.snapshot_shared_history
     shared.advance(int(blocks[0].cache["snapshot_id"]))
+    for cache in getattr(runtime, "snapshot_cache_channels", {}).values():
+        cache.advance(int(blocks[0].cache["snapshot_id"]))
     packets = tuple(history.read(block.src_nodes, int(block.cache["snapshot_id"])) for block in blocks)
+    channel_packets = {
+        name: tuple(cache.read(block.src_nodes, int(block.cache["snapshot_id"]) + 1) for block in blocks)
+        for name, cache in getattr(runtime, "snapshot_cache_channels", {}).items()
+    }
     hot_rows = tuple((shared.row_map[block.dst_nodes] >= 0).nonzero(as_tuple=True)[0] for block in blocks)
     shared_packets = tuple(shared.read(block.dst_nodes[rows], int(block.cache["snapshot_id"]) + 1)
                            for block, rows in zip(blocks, hot_rows))
@@ -85,6 +101,7 @@ def hydrate_snapshot_history(batch, runtime) -> None:
         "neighbor_recurrent_node_ids": ids,
         "neighbor_recurrent_shared_mask": manager.row_map[ids] < 0,
         "neighbor_recurrent_exact": exact,
+        "snapshot_cache_channels": channel_packets,
     })
     batch.state = state
 
@@ -94,6 +111,10 @@ def commit_snapshot_history(runtime, delta) -> None:
     for nodes, version, values in delta.metadata.get("snapshot_states", ()):
         history.update(nodes, version, values)
         runtime.snapshot_version = version
+    for name, observations in delta.metadata.get("snapshot_cache_channels", {}).items():
+        history = runtime.snapshot_cache_channels[name]
+        for nodes, version, values in observations:
+            history.update(nodes, version, values)
 
 
 def launch_snapshot_push(runtime) -> None:
@@ -105,12 +126,16 @@ def launch_snapshot_push(runtime) -> None:
     if len(runtime.pending_snapshot_pushes) >= 2:
         runtime._count("snapshot_boundary_backpressure_waits", 1)
         _finish_snapshot_push(runtime, runtime.pending_snapshot_pushes.pop(0))
-    values = runtime.snapshot_history.read(runtime.snapshot_boundary_nodes, runtime.snapshot_version)
+    histories = {"state": runtime.snapshot_history, **runtime.snapshot_cache_channels}
+    packets = [history.read(runtime.snapshot_boundary_nodes, runtime.snapshot_version)
+               for history in histories.values()]
+    widths = tuple(packet.shape[1] for packet in packets)
+    values = torch.cat(packets, dim=1)
     keep = torch.ones(values.shape[0], dtype=torch.bool, device=values.device)
     change_filter = runtime.change_filter
     if change_filter is not None:
         rows = runtime.snapshot_boundary_rows
-        state = values[:, :runtime.snapshot_history.dim]
+        state = packets[0][:, :runtime.snapshot_history.dim]
         if change_filter.min_cosine_distance is not None:
             keep = change_filter.allow(rows, values=state)
         else:
@@ -131,13 +156,14 @@ def launch_snapshot_push(runtime) -> None:
     runtime.pending_snapshot_pushes.append((
         runtime.comm.launch_push(route, nodes, name="snapshot_boundary:node_ids"),
         runtime.comm.launch_push(route, values, name="snapshot_boundary:owner"),
+        tuple(histories), widths,
     ))
 
 
 def finish_snapshot_pushes(runtime, *, ready_only: bool) -> None:
     waiting = []
     for handle in runtime.pending_snapshot_pushes:
-        if not ready_only or all(part.ready() for part in handle):
+        if not ready_only or all(part.ready() for part in handle[:2]):
             _finish_snapshot_push(runtime, handle)
         else:
             waiting.append(handle)
@@ -145,8 +171,10 @@ def finish_snapshot_pushes(runtime, *, ready_only: bool) -> None:
 
 
 def _finish_snapshot_push(runtime, handle) -> None:
-    nodes, packets = (runtime.comm.finish_push(part) for part in handle)
-    runtime.snapshot_history.install(nodes, packets)
+    nodes, packets = (runtime.comm.finish_push(part) for part in handle[:2])
+    for name, values in zip(handle[2], packets.split(handle[3], dim=1)):
+        history = runtime.snapshot_history if name == "state" else runtime.snapshot_cache_channels[name]
+        history.install(nodes, values)
 
 
 def install_shared_history(runtime, nodes, packets) -> None:
