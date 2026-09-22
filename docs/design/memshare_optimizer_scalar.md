@@ -1,5 +1,31 @@
 # Supervision flag: isolated MemShare optimizer candidate
 
+## Reject persistent gradient views (2026-09-22)
+
+The shared boundary is unchanged: Event/Snapshot and node/edge execution all
+reach backward -> `sync_gradients` -> optimizer before runtime-owned state
+commit. The earlier dense-bucket experiment allocated, flattened and copied
+gradients every step; native coalescing retained separate gradient buffers.
+Neither tested a persistent flat buffer whose slices are the parameter gradient
+buffers themselves.
+
+The bounded candidate creates one zeroed Torch buffer per device/dtype at epoch
+setup, binds every trainable parameter's `.grad` to a shaped view, preserves
+those views with `optimizer.zero_grad(set_to_none=False)`, and reduces each flat
+buffer once after backward. Missing/empty-owner gradients are already zero
+views, so collective membership is static. It adds no public option, DDP hook,
+cache manager, model branch or custom kernel. DGL is unrelated to parameter
+reduction; custom C++/CUDA is unjustified while public Torch tensor views and
+collectives express the operation. Retention requires focused Gloo/NCCL
+optimizer parity, TGN gain, and DCRNN staying at the 2 s/epoch target.
+
+The implementation passed focused local, Gloo and NCCL checks, but was removed
+after timing. Two ten-epoch candidate runs averaged 0.33035 and 0.32078 s/epoch
+over epochs 2--10. Their pooled 0.32556 s/epoch was only 0.33% faster than
+three control runs pooled at 0.32663 s/epoch, with opposite direction across
+individual pairs. That is run jitter, not a reusable performance win. The TGN
+gate failed, so no accuracy or DCRNN campaign was spent on this candidate.
+
 ## Reject direct native DDP event lowering (2026-09-22)
 
 Before implementation, Event and Snapshot share Prepare -> accessor -> Batch ->
@@ -15,15 +41,16 @@ forward path, and kept state update on the underlying StarryModel. Focused
 single-process coverage passed, but the first four-rank smoke deadlocked before
 epoch 1 when DDP and endpoint autograd collectives shared the default group. A
 second smoke gave DDP a separate all-rank process group, matching MemShare's
-physical separation, but still deadlocked before epoch 1: ranks do not reach
-the reducer in one globally ordered sequence around the endpoint backward
-route. Both attempts were terminated and production code was removed.
+physical separation, but still deadlocked before epoch 1. The measured Event
+configuration has local target rows and does not use endpoint-embedding
+autograd exchange, so the earlier endpoint-specific attribution was too strong.
+The remaining reducer/rank divergence is unresolved. Both attempts were
+terminated and production code was removed.
 
 Direct DDP wrapping is therefore rejected. The current explicit
 post-backward synchronization remains the safe common path. Reconsider overlap
-only after endpoint-gradient exchange and parameter reduction share an explicit
-global backward communication schedule; adding another wrapper or process
-group is insufficient.
+only after the complete per-rank forward/backward collective sequence is
+traced; adding another wrapper or process group is insufficient.
 
 ## Native gradient coalescing candidate (2026-09-22)
 

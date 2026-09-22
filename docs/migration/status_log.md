@@ -1,5 +1,33 @@
 # Migration Status Log
 
+## 2026-09-22: Reject persistent gradient views
+
+Latest state:
+
+- The canonical Prepare -> accessor -> Batch -> dependencies -> model -> task
+  -> backward -> optimizer -> state-update path already meets at
+  `sync_gradients`. The earlier dense bucket packed/copied every step; native
+  coalescing retained separate buffers. Neither reused a flat gradient buffer
+  as the parameter `.grad` storage.
+- The candidate bound one public Torch buffer per device/dtype at epoch setup,
+  uses parameter-shaped views for backward and one post-backward all-reduce per
+  buffer. It introduces no public API, model specialization, DDP wrapper, cache
+  manager or custom kernel. Missing gradients become stable zero views, keeping
+  collective order identical on empty owners. The implementation was removed;
+  production and tests remain byte-identical to `2d1faac`.
+
+Verification:
+
+- Local focused tests passed 70 with 9 skipped. Two-rank Gloo passed 3 tests per
+  rank; the split two-rank NCCL empty/optimizer check passed 2 tests per rank.
+- WIKI/TGN candidate means for epochs 2--10 were 0.33035 and 0.32078 s/epoch.
+  Pooled candidate time was 0.32556 versus 0.32663 across three controls, only
+  0.33% faster, and individual pairs moved in opposite directions. The change
+  fails the end-to-end retention gate despite reducing collective count.
+- No accuracy or DCRNN campaign was run after the TGN timing gate failed.
+  Outputs are `/tmp/starrygl_tgn_persistent_grad_views*` and
+  `/tmp/starrygl_tgn_2d1faac_adjacent_control2_e10`.
+
 ## 2026-09-22: Reject direct native DDP event lowering
 
 Latest state:
@@ -19,16 +47,16 @@ Latest state:
 Verification:
 
 - Focused model/Event regressions passed: 72 passed, 11 skipped.
-- The first four-A40 smoke deadlocked before epoch 1 because DDP gradient
-  collectives and endpoint autograd communication shared the default process
-  group. The retry placed DDP on a separate cached all-rank group and kept
-  endpoint/state traffic on the `CommScheduler` group; it also deadlocked before
-  epoch 1. Both runs were terminated and left no GPU processes.
-- Direct DDP is unsafe while ranks reach parameter reduction around different
-  endpoint-autograd schedules. A future overlap path must make the whole
-  backward communication sequence globally ordered; another wrapper, cache or
-  process group does not solve that boundary. No timing or accuracy result is
-  claimed because neither distributed candidate completed an epoch.
+- The first four-A40 smoke deadlocked before epoch 1 with DDP on the default
+  group. The retry placed DDP on a separate cached all-rank group and also
+  deadlocked before epoch 1. Both runs were terminated and left no GPU
+  processes. This Event configuration does not use endpoint-embedding autograd
+  exchange, so the earlier endpoint-specific attribution is withdrawn; exact
+  reducer/rank divergence remains unresolved.
+- A future overlap path needs a complete per-rank forward/backward collective
+  trace. Another wrapper, cache or process group does not solve the observed
+  boundary. No timing or accuracy result is claimed because neither
+  distributed candidate completed an epoch.
 
 ## 2026-09-22: Reject native gradient coalescing
 
