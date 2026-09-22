@@ -1,5 +1,45 @@
 # Migration Status Log
 
+## 2026-09-22: Make negative loss weighting final-ID aware
+
+Latest state:
+
+- Prepare -> task slice -> negative materialization -> graph accessor -> Batch
+  -> dependencies -> model -> task -> state update remains the shared path.
+- `NegativeSamplePool` has one optional vectorized
+  `loss_weight_fn(sampled_ids, pool)`. It runs after destination sampling, so an
+  overlapping global-pool draw can receive the same weight as a local-pool draw
+  of the same final ID.
+- Removed the internal string-selected inverse/MemShare formulas. Unit weight
+  remains the default; a nonstandard target distribution must provide its
+  explicit callable at the task/sampler boundary.
+
+Efficiency alternatives considered:
+
+- The existing Torch sampling and one batched callable were selected. Branch
+  tags cannot express final-ID locality when candidate sets overlap; another
+  sampler, model branch, DGL graph, or native kernel is unnecessary.
+
+Files modified:
+
+- `src/starrygl/task/{target.py,negative.py,CONTRACT.md}`
+- `src/starrygl/runtime/event/target.py`
+- `tests/test_starrygl_task.py`
+- `docs/design/memshare_temporal_target_identity_20260913.md`
+
+Verification:
+
+- Focused task/runtime regression: 20 passed. TGN/MemShare math and model
+  regression: 51 passed, 7 device/distributed skips. Production compile-check
+  passed; touched modules remain below 500 lines.
+- The new check draws from overlapping local/global candidate sets and verifies
+  that equal final IDs receive equal callable weights regardless of branch.
+
+Unresolved risks:
+
+- The fresh WIKI benchmark must pass the MemShare correction callable and use
+  common fixed evaluation negatives before accuracy parity can be claimed.
+
 ## 2026-09-22: Align event negative pools with node replicas
 
 Latest state:

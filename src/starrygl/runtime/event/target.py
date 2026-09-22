@@ -82,14 +82,9 @@ def negative_dst_pool(view: Mapping[str, Any], options: Mapping[str, Any] | None
             global_ = local
     local_prob = float(options.get("negative_local_prob", 1.0))
     global_prob = float(options.get("negative_global_prob", 0.0))
-    local_weight = global_weight = 1.0
-    p_local, p_global = _negative_mix_prob(local_prob, global_prob)
-    correction = str(options.get("negative_weight_correction", "none"))
-    if correction in {"inverse_probability", "inverse_prob", "unbiased"}:
-        local_weight = 1.0 / max(p_local, 1e-12) if p_local else 0.0
-        global_weight = 1.0 / max(p_global, 1e-12) if p_global else 0.0
-    elif correction == "memshare" and p_global:
-        global_weight = p_local / p_global * max(1.0, float(global_.numel())) / max(1.0, float(local.numel()))
+    loss_weight_fn = options.get("negative_loss_weight_fn")
+    if loss_weight_fn is not None and not callable(loss_weight_fn):
+        raise TypeError("negative_loss_weight_fn must be callable")
     return NegativeSamplePool(
         mode=str(options.get("negative_mode", "dst")),
         local_node_ids=local.long(),
@@ -100,8 +95,7 @@ def negative_dst_pool(view: Mapping[str, Any], options: Mapping[str, Any] | None
         global_dst_ids=global_.long(),
         local_prob=local_prob,
         global_prob=global_prob,
-        local_loss_weight=local_weight,
-        global_loss_weight=global_weight,
+        loss_weight_fn=loss_weight_fn,
     )
 
 
@@ -166,9 +160,3 @@ def membership_mask(values: Tensor, candidates: Tensor) -> Tensor:
     idx = torch.searchsorted(candidates, values.long())
     valid = idx < int(candidates.numel())
     return valid & (candidates.index_select(0, idx.clamp_max(int(candidates.numel()) - 1)) == values.long())
-
-
-def _negative_mix_prob(local: float, global_: float) -> tuple[float, float]:
-    local, global_ = max(0.0, local), max(0.0, global_)
-    total = local + global_
-    return (local / total, global_ / total) if total else (1.0, 0.0)

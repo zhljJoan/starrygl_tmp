@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Literal, Mapping
+from typing import Any, Callable, Literal, Mapping
 
 import torch
 
@@ -27,6 +27,7 @@ class NegativeSamplePool:
     global_prob: float = 0.0
     local_loss_weight: float | Tensor = 1.0
     global_loss_weight: float | Tensor = 1.0
+    loss_weight_fn: Callable[[Tensor, "NegativeSamplePool"], Tensor] | None = None
 
 
 @dataclass(frozen=True)

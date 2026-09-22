@@ -61,6 +61,8 @@ roots。首版 CPU native sampler 直接生成 CPU roots，避免 GPU -> CPU 同
 Local/global 候选域混合仍是同一个 `random` policy，不新增策略框架。
 `neg_loss_weight` 只表示 UDF 明确返回的 loss 权重，不能自动设置成采样概率的
 倒数；没有目标分布和校正公式时不声称 importance correction。
+需要非标准校正时，通过 `NegativeSamplePool.loss_weight_fn(sampled_ids, pool)`
+一次向量化生成权重；权重可以按最终抽到的 ID 判定，不限定为抽样分支。
 
 ## 端点 Route
 

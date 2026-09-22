@@ -78,7 +78,10 @@ def _sample_dst_pool(
 ) -> tuple[Tensor, Tensor]:
     local = _dst_candidates(pool.local_dst_ids, pool.local_node_ids, like)
     global_ = _dst_candidates(pool.global_dst_ids, pool.global_node_ids, like)
-    return _sample_mixed(pool, local=local, global_=global_, count=count, generator=generator)
+    values, weight = _sample_mixed(pool, local=local, global_=global_, count=count, generator=generator)
+    if pool.loss_weight_fn is not None:
+        weight = _weight_tensor(pool.loss_weight_fn(values, pool), count=count)
+    return values, weight
 
 
 def _sample_src_pool(

@@ -401,6 +401,39 @@ def test_materialize_negative_samples_weights_by_sampling_branch() -> None:
     assert torch.equal(out.neg_loss_weight, torch.full_like(out.neg_loss_weight, 5.0))
 
 
+def test_materialize_negative_samples_supports_final_id_weight_function() -> None:
+    def final_id_weight(values, pool):
+        return torch.where(torch.isin(values, pool.local_dst_ids), 2.0, 5.0)
+
+    target = sg.TaskTarget(
+        target_kind="edge",
+        target_ids=torch.tensor([0]),
+        pos_src=torch.tensor([10]),
+        pos_dst=torch.tensor([2]),
+        negative_pool=sg.NegativeSamplePool(
+            mode="dst",
+            local_dst_ids=torch.tensor([5, 6]),
+            global_dst_ids=torch.tensor([5, 6, 7, 8]),
+            local_prob=0.0,
+            global_prob=1.0,
+            global_loss_weight=9.0,
+            loss_weight_fn=final_id_weight,
+        ),
+    )
+
+    out = sg.materialize_negative_samples(
+        target,
+        num_negatives=20,
+        generator=torch.Generator().manual_seed(3),
+    )
+
+    assert out.neg_dst is not None and out.neg_loss_weight is not None
+    local = torch.isin(out.neg_dst, torch.tensor([5, 6]))
+    assert bool(local.any().item()) and bool((~local).any().item())
+    assert torch.equal(out.neg_loss_weight[local], torch.full_like(out.neg_loss_weight[local], 2.0))
+    assert torch.equal(out.neg_loss_weight[~local], torch.full_like(out.neg_loss_weight[~local], 5.0))
+
+
 def test_edge_prediction_task_reports_ap_auc_for_pos_neg_scores() -> None:
     task = sg.EdgePredictionTask()
     output = sg.ModelOutput(
@@ -489,4 +522,3 @@ def test_edge_prediction_task_supports_binary_logits() -> None:
     assert torch.allclose(metrics["accuracy"], torch.tensor(1.0))
     assert torch.allclose(metrics["ap"], torch.tensor(1.0))
     assert torch.allclose(metrics["auc"], torch.tensor(1.0))
-
