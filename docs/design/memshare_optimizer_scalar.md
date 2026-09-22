@@ -1,5 +1,22 @@
 # Supervision flag: isolated MemShare optimizer candidate
 
+## Native gradient coalescing candidate (2026-09-22)
+
+Before implementation, the shared path remains Prepare -> accessor -> Batch ->
+dependencies -> model -> task -> backward -> `sync_gradients` -> optimizer ->
+state commit. Event/Snapshot and node/edge execution all meet at this boundary;
+only parameter device/dtype is a necessary physical grouping. TGN currently
+issues 27 same-dtype gradient all-reduces per batch. The candidate will reuse
+PyTorch distributed's native coalescing context plus `torch._foreach_div_`,
+without flat-buffer copies, a DDP wrapper, model branch or configuration. The
+existing per-parameter path is restored unless focused Gloo/NCCL correctness and
+adjacent four-A40 timing both hold; custom CUDA is unjustified before that test.
+The candidate was removed: CPU/Gloo and NCCL each passed 6 tests per rank, but
+two adjacent timing pairs pooled to only 0.32512 -> 0.32247 s/epoch (-0.81%).
+Its full evaluation ended at test AP/AUC 0.91145/0.90607, and the implementation
+depended on a private PyTorch API. That combination does not clear the retention
+gate; production stays on the public per-parameter collectives.
+
 Status before implementation: frozen baseline copied; only runtime/epoch.py will change.
 
 Shared path: Prepare owner task table -> task slice/optional negatives -> Event T-CSR or Snapshot graph accessor -> unified Batch -> dependency hydration -> encode_model -> endpoint/task loss -> backward -> step_optimizer -> runtime-owned state commit. Both empty and supervised branches in runtime/loop.py call the same step_optimizer; Event/Snapshot and node/edge ownership do not specialize at this boundary. CPU/GPU device is the only physical distinction.

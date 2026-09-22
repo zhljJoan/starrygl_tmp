@@ -1,5 +1,30 @@
 # Migration Status Log
 
+## 2026-09-22: Reject native gradient coalescing
+
+Latest state:
+
+- The common backward -> `sync_gradients` -> optimizer boundary currently
+  performs one all-reduce and division per trainable parameter. The TGN profile
+  records 27 float reductions per batch; Event/Snapshot and node/edge paths all
+  reuse this function.
+- A bounded candidate used PyTorch's distributed coalescing context per
+  device/dtype and native foreach division. It added no flat packing,
+  configuration, DDP wrapper, cache, model branch or execution path, but was
+  removed after validation. Production remains byte-identical to `61192b5`.
+
+Verification:
+
+- Two-rank CPU/Gloo and two-rank NCCL gradient/empty-owner checks each passed 6
+  tests per rank. Two adjacent four-A40 WIKI/TGN pairs measured 0.33106 ->
+  0.32660 and 0.31918 -> 0.31835 s/epoch; pooled means improved only 0.81%,
+  within visible run jitter.
+- Candidate test AP/AUC was 0.91145/0.90607 after ten epochs. Although random
+  samples are intentionally unpaired, the candidate also changes collective
+  floating-point ordering and relies on private `torch.distributed` API. The
+  small timing result does not justify those risks. Outputs are
+  `/tmp/starrygl_tgn_{61192b5_control,native_coalescing}*`.
+
 ## 2026-09-22: Reuse static supervision scheduling for Event
 
 Latest state:
