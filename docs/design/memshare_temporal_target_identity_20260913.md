@@ -35,3 +35,16 @@ second CSC traversal while the existing `sampled_edge_ids` keeps one vectorized
 unique feature request. Torch/native buffers are reused; DGL block reconstruction
 and a custom kernel add no missing operation. The final WIKI test AP/AUC is
 0.91508/0.91062, within 0.379/0.465 percentage points of MemShare.
+
+## Performance parity guardrail (2026-09-22)
+
+An optimization is retained only when the full common runtime improves without
+regressing the aligned train -> validation -> test protocol. Isolated savings
+did not satisfy this rule: destination-prefix metadata and target-route reuse
+were hidden by the pipeline; changing the optimizer flag collective did not
+improve end-to-end time; fused and compact-component K/V projections reduced
+memory but their reordered floating-point operations lost about 0.7 percentage
+points of test AP/AUC against the unchanged repeat. All were removed. The fresh
+unchanged run reaches test AP/AUC 0.91586/0.91064, within 0.300/0.463 percentage
+points of native MemShare. Future fusion must keep this full-training gate; a
+component or single-batch equality check is insufficient.

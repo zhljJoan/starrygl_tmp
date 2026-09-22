@@ -1,5 +1,63 @@
 # Migration Status Log
 
+## 2026-09-22: Reject unpaired TGN micro-optimizations
+
+Latest state:
+
+- The common window -> native accessor -> Batch -> dependency access -> model
+  -> task -> state-update path remains unchanged. No production candidate in
+  this pass cleared both the WIKI throughput and accuracy gates.
+- A fresh unchanged-baseline train -> validation -> test run ended at test
+  AP/AUC 0.91586/0.91064. Relative to native MemShare
+  0.91886/0.91527, the remaining gaps are 0.300/0.463 percentage points.
+- The retained baseline remains commit `dfc53a7`: two no-evaluation repeats
+  take 0.32322 and 0.32533 s/epoch over rank-max epochs 2--10. Native
+  MemShare remains 0.25505 s/epoch.
+
+Efficiency alternatives considered:
+
+- Moving the compact-MFG destination-prefix proof out of the attention hot
+  path measured 0.33511 s/epoch when revalidated on CPU and 0.32542 when
+  carried as metadata, versus the 0.32533 repeat baseline. Both were removed.
+- Reusing target-route rows in TGN state update reduced isolated Python time
+  but two end-to-end runs measured 0.33266 and about 0.336 s/epoch. A float32
+  optimizer-supervision collective measured 0.33343 s/epoch. Both were removed.
+- Fusing K/V projection reduced peak allocated/reserved memory from about
+  1.334/5.362 GB to 1.241/4.167 GB. Its two timing runs were 0.31274 and
+  0.32533 s/epoch, but final test AP/AUC fell to 0.90874/0.90349. Splitting the
+  projection by compact node/edge/time components reduced memory further to
+  1.142/3.506 GB and measured 0.32455 s/epoch, but ended at
+  0.90901/0.90367. Both floating-point reorderings failed the accuracy gate
+  and were removed.
+- `torch.compile(dynamic=True)` was tested only in the thin diagnostic wrapper
+  and could not start because the installed PyTorch/Triton APIs are
+  incompatible (`get_cuda_stream` is missing). Dependencies were not changed.
+  DGL attention, dense gradient bucketing, eager feature finish, delayed `col`
+  materialization, native root-row export, and compact raw edges were already
+  measured and rejected; no custom C++/CUDA operator is justified by these
+  results.
+
+Files modified:
+
+- `docs/design/memshare_temporal_target_identity_20260913.md`
+
+Verification:
+
+- Exact native-attention output/gradient and temporal-model checks passed
+  before each projection benchmark. The final production tree is unchanged
+  and `git diff --check` passes.
+- Outputs are `/tmp/starrygl_tgn_{prefix_hint_candidate,native_prefix_marker,
+  float_active_flag,fused_kv_projection,compact_kv_components}*` and
+  `/tmp/starrygl_tgn_dfc53a7_baseline_repeat_eval_e10`.
+
+Unresolved risks:
+
+- The 26--28% WIKI throughput gap is now dominated by the aggregate
+  accessor/communication and many small model kernels, not one safe Python
+  lookup. Further work needs either a verified communication reduction or a
+  numerically stable fused operator with a full training accuracy gate.
+- DCRNN's 2 s/epoch gate remains unmet at 2.0838 s/epoch.
+
 ## 2026-09-22: Preserve native sampled edge multiplicity
 
 Latest state:
