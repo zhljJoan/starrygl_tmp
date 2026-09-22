@@ -1,5 +1,22 @@
 # Migration Status Log
 
+## 2026-09-22: Isolated MemShare/master benchmark worktree
+
+Latest state:
+
+- Created `/home/zlj/starrygl-undate/MemShare-master` from clean MemShare
+  `master` (`454ff32`) without touching the dirty `dual_dedup` checkout.
+  CUDA-enabled `libstarrygl`, `libstarrygl_sampler`, and UVM extensions built
+  successfully with the pinned Torch/CUDA environment.
+- The 4-GPU TGN run was not completed because all four GPUs were occupied by
+  an unrelated existing TGAT profile job.  No timing number is reported, and
+  that job was not interrupted.  The temporary test epoch edit was restored.
+
+Efficiency alternatives considered: reuse the dirty checkout's binary,
+benchmark on fewer GPUs, or wait for the clean master run.  Only the last is a
+valid endpoint for the requested comparison; fewer GPUs or mixed binaries would
+not be comparable.
+
 ## 2026-09-22: TGN end-to-end parity profiling baseline
 
 Latest state:
