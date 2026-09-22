@@ -1,5 +1,29 @@
 # Rank-local Event increment statistics
 
+## Reject Store-bound capacity (2026-09-22)
+
+The canonical path remains Prepare -> Store -> Batch -> dependency access ->
+model -> task -> state update.  The unavoidable specialization is the detached
+TGN/JODIE/APAN shared-hot increment estimator; DCRNN continues to use the same
+runtime state/cache managers through its snapshot dependency kind.
+
+`sg.compile()` may construct an Event model before a Store exists, so the
+estimator must initially remain growable.  Once the Store is bound, its existing
+`hot_node_ids` tensor fixes the row domain.  The candidate bound that capacity
+once to remove two `rows.max().item()` device synchronizations per batch without
+a new cache policy, state manager, route, or model stack.  A first version also
+let empty shared selections flow through native Torch indexing instead of a
+third `.item()` guard.  Dynamic direct-model use retained growth.
+
+Alternatives considered are the existing Torch indexing path, rebuilding the
+model from configuration, and a custom C++/CUDA operator.  Reuse Torch and the
+Store capacity: rebuilding changes model identity, DGL has no role in scratch
+row allocation, and a native operator does not address the host-side check.
+Focused checks passed, but the combined and capacity-only variants measured
+0.33192 and 0.33117 s/epoch on four A40s versus the adjacent 0.32248 control.
+The checks are hidden by other work, so all implementation and tests were
+removed; the growable estimator remains.
+
 2026-09-13, before implementation. The full WIKI/TGN shared-hot run completed
 epoch 1, then failed at the next model synchronization. Distributed debug reported
 broadcast sequence 613 with rank 0 shape `[1, 1]` and other ranks `[875, 1]`.

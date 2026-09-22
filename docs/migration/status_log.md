@@ -1,5 +1,49 @@
 # Migration Status Log
 
+## 2026-09-22: Reject parallel Event sampler output
+
+Latest state:
+
+- A read-only configuration run selected the native sampler's existing
+  `parallel` output under the same Prepare -> accessor -> Batch -> dependency ->
+  model -> task -> state-update spine.  No source or artifact changed.
+- Four-A40 WIKI/TGN epochs 2--3 averaged 0.32943 s/epoch, slower than the
+  adjacent default's roughly 0.322--0.325 range.  Peak allocated/reserved memory
+  fell to about 1.266/5.146 GB from 1.33/5.36 GB, so this remains an opt-in
+  memory tradeoff rather than the throughput default.  Output:
+  `/tmp/starrygl_tgn_parallel_output_screen_e3`.
+
+The existing native compact/default path is retained.  Torch/DGL rematerialized
+outputs and another native layout were not added: the existing selector already
+provides the relevant comparison, and neither a Python loop nor a custom kernel
+is justified by a failed timing screen.  Accuracy and DCRNN were not rerun.
+
+## 2026-09-22: Reject Store-bound Event increment capacity
+
+Latest state:
+
+- The common Prepare -> Store -> Batch -> dependency access -> model -> task ->
+  state-update path is unchanged.  Store binding already fixes the shared-hot
+  row domain, but an Event model constructed earlier by `sg.compile()` starts
+  with one growable increment row and checks `rows.max().item()` twice per
+  batch.  The candidate bound that known capacity once before device placement
+  and skipped later growth checks, then was removed after timing.
+- Construction without a Store remains growable for direct model use.  The
+  model's increment statistics remain detached, rank-local, nonpersistent
+  scratch state; DCRNN's runtime-owned snapshot cache is unchanged.
+
+Efficiency alternatives considered: reusing the Store's existing hot-node
+tensor avoids a new cache or route; Torch `index_select`/`index_add_` remain the
+data path.  Rebuilding the model at fit time would disturb model identity, and
+a custom kernel cannot remove a Python-side synchronization.  The combined
+version also removed the `shared_mask.any().item()` guard; it measured 0.33192
+s/epoch.  Restoring that guard and binding only capacity measured 0.33117
+s/epoch, versus the adjacent 0.32248 control.  Focused candidate checks passed
+52 with 8 skips, but the synchronizations are evidently hidden by existing
+work.  Production and tests returned exactly to the prior implementation;
+accuracy and DCRNN were not rerun.  Outputs are
+`/tmp/starrygl_tgn_bound_increment_{candidate,only}_e10`.
+
 ## 2026-09-22: Reject unconditional bounded-state routes
 
 Latest state:

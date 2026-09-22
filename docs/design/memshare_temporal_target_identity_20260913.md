@@ -1,5 +1,15 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject parallel native sampler output (2026-09-22)
+
+The existing native sampler output selector was tested without a source change
+under the same accessor -> Batch -> dependency -> model path.  `parallel`
+reduced four-A40 WIKI/TGN peak allocated/reserved memory to about 1.266/5.146 GB
+from 1.33/5.36 GB, but epochs 2--3 averaged 0.32943 s/epoch versus the default's
+roughly 0.322--0.325 range.  It remains an opt-in memory tradeoff.  No second
+materializer, Torch/DGL reconstruction, Python hot-path loop, or native output
+format is added.
+
 ## Reject unconditional bounded-state routes (2026-09-22)
 
 The canonical path remains accessor -> Batch -> dependency access -> model ->
