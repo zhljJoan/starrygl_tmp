@@ -1,5 +1,32 @@
 # Migration Status Log
 
+## 2026-09-22: Reject packed combined owner-state responses
+
+Latest state:
+
+- Event bounded hydration already combines memory and mailbox discovery behind
+  one owner request, but submits values and timestamps as four separate response
+  collectives.  The candidate grouped response tensors with identical
+  dtype/device into one flat packet and reconstructed their original shapes
+  after the existing scheduled route.  It was removed after timing.
+- The canonical dependency access -> Batch -> model path, global collective
+  order, exact values, freshness, owner/shared planes and public state/cache
+  interfaces remain unchanged.  Production continues to submit the four native
+  tensors without a new packet-layout contract.
+
+Efficiency alternatives considered: reuse Torch reshape/cat/split and the
+existing `CommScheduler`; fusing the request with feature/state construction
+would cross responsibilities, while free-form p2p or a custom kernel adds no
+missing primitive.  Mixed-shape/dtype focused checks passed 28 with 8 skips;
+two-rank empty/nonempty/shared Gloo checks passed 3 per rank.  Four-A40 WIKI/TGN
+rank-max epochs 2--30 measured 0.31871 s/epoch (median 0.31699) for the
+candidate and 0.32146 (median 0.31815) for the adjacent control.  Epochs 11--30
+measured 0.31577 versus 0.32116.  The 0.85% full-run mean and 0.37% median gains
+are too small for the extra packet layout, cat/split copies and about 50 lines;
+production/tests were restored exactly.  Accuracy and DCRNN were not rerun.
+Snapshot DCRNN cache channels are unaffected.  Outputs:
+`/tmp/starrygl_tgn_packed_state_{candidate,control}_e30`.
+
 ## 2026-09-22: Reject prepared unique state writes
 
 Latest state:

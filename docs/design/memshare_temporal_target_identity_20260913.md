@@ -1,5 +1,22 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject packed combined owner-state responses (2026-09-22)
+
+The shared path remains dependency access -> Batch -> model.  The existing
+combined memory/mailbox hydrate already reuses one owner request and globally
+ordered `CommScheduler`, but launches memory values, memory timestamps, mailbox
+values and mailbox timestamps separately on its response route.  The candidate
+grouped tensors by dtype/device, flattened and concatenated them once, then
+split/reshaped them after the same route.
+
+Mixed-shape/dtype and two-rank empty/nonempty checks passed.  On four A40s, WIKI
+epochs 2--30 measured 0.31871 s/epoch versus 0.32146 for the adjacent control;
+medians were 0.31699 and 0.31815.  The 0.85% mean and 0.37% median changes do
+not justify a packet-layout contract and extra cat/split copies.  The candidate
+was removed, retaining the current Torch collectives and no new cache policy,
+owner semantics, p2p path, model branch, DGL work, or native kernel.  DCRNN's
+Snapshot cache/history path remains unchanged.
+
 ## Reject prepared unique state writes (2026-09-22)
 
 The shared path remains Prepare event rows -> accessor -> Batch -> model ->
