@@ -1,5 +1,30 @@
 # Supervision flag: isolated MemShare optimizer candidate
 
+## Reject direct native DDP event lowering (2026-09-22)
+
+Before implementation, Event and Snapshot share Prepare -> accessor -> Batch ->
+dependencies -> model -> task -> backward -> optimizer -> state commit. Native
+MemShare wraps TGN in PyTorch DDP, while StarryGL currently waits until backward
+finishes and then reduces every parameter separately. The unavoidable boundary
+is model execution: direct Event models already implement `forward(Batch)` and
+can enter DDP; runtime-owned Snapshot recurrent scans cannot be wrapped without
+moving scan semantics into the model.
+
+The minimum candidate bound DDP once in `fit`, called the standard model
+forward path, and kept state update on the underlying StarryModel. Focused
+single-process coverage passed, but the first four-rank smoke deadlocked before
+epoch 1 when DDP and endpoint autograd collectives shared the default group. A
+second smoke gave DDP a separate all-rank process group, matching MemShare's
+physical separation, but still deadlocked before epoch 1: ranks do not reach
+the reducer in one globally ordered sequence around the endpoint backward
+route. Both attempts were terminated and production code was removed.
+
+Direct DDP wrapping is therefore rejected. The current explicit
+post-backward synchronization remains the safe common path. Reconsider overlap
+only after endpoint-gradient exchange and parameter reduction share an explicit
+global backward communication schedule; adding another wrapper or process
+group is insufficient.
+
 ## Native gradient coalescing candidate (2026-09-22)
 
 Before implementation, the shared path remains Prepare -> accessor -> Batch ->

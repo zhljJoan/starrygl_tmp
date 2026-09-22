@@ -1,5 +1,35 @@
 # Migration Status Log
 
+## 2026-09-22: Reject direct native DDP event lowering
+
+Latest state:
+
+- The shared Prepare -> accessor -> Batch -> dependencies -> model -> task ->
+  backward -> optimizer -> state-update spine remains. Native MemShare uses
+  PyTorch DDP for TGN; StarryGL currently performs 27 post-backward parameter
+  reductions per TGN batch.
+- The bounded candidate bound native DDP once for distributed Event training
+  and kept runtime-owned Snapshot recurrent scans on the existing
+  synchronization path.
+  It reuses `StarryModel.forward(Batch)` and keeps state commits on the
+  underlying model. No public option, model adapter, cache or second loop is
+  introduced. The candidate was removed; production remains byte-identical to
+  `9438496b`.
+
+Verification:
+
+- Focused model/Event regressions passed: 72 passed, 11 skipped.
+- The first four-A40 smoke deadlocked before epoch 1 because DDP gradient
+  collectives and endpoint autograd communication shared the default process
+  group. The retry placed DDP on a separate cached all-rank group and kept
+  endpoint/state traffic on the `CommScheduler` group; it also deadlocked before
+  epoch 1. Both runs were terminated and left no GPU processes.
+- Direct DDP is unsafe while ranks reach parameter reduction around different
+  endpoint-autograd schedules. A future overlap path must make the whole
+  backward communication sequence globally ordered; another wrapper, cache or
+  process group does not solve that boundary. No timing or accuracy result is
+  claimed because neither distributed candidate completed an epoch.
+
 ## 2026-09-22: Reject native gradient coalescing
 
 Latest state:
