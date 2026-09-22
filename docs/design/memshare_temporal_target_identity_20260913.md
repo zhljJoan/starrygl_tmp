@@ -1,5 +1,14 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject Torch CSC segment attention (2026-09-22)
+
+Event MFGs already expose CSC `indptr`, so attention softmax and aggregation
+could replace destination scatter operations with public `torch.segment_reduce`.
+At WIKI-like 100k edges, 8k destinations, two heads and 50 values/head, the
+complete forward/backward screen took 1.290 ms versus 1.006 for the retained
+scatter path, a 28.2% regression; outputs also differed by up to 5.96e-7 from
+reduction reordering.  No production branch, metadata or test was added.
+
 ## Reject public coalesced framework gradients (2026-09-22)
 
 The canonical model -> task -> backward -> optimizer path currently reduces

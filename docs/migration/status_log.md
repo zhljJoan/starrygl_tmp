@@ -1,5 +1,25 @@
 # Migration Status Log
 
+## 2026-09-22: Reject Torch CSC segment attention
+
+Latest state:
+
+- The common Batch -> model -> task path is unchanged.  A read-only CUDA screen
+  evaluated public `torch.segment_reduce` for the two grouped-softmax reductions
+  and message aggregation, reusing Event CSC `indptr` without constructing a
+  DGL graph or adding a cache/model path.
+- At WIKI-like 100k edges, 8k destinations, two heads and 50 values/head, 50
+  warmed forward/backward iterations averaged 1.290 ms for the segment version
+  versus 1.006 for the retained scatter/index-add implementation.  Maximum
+  output difference was 5.96e-7 from reduction reordering.
+
+Efficiency alternatives considered: the current Torch scatter path, public
+Torch segment reduction, the already rejected DGL path, and a custom fused
+kernel.  The available native segment primitive is 28.2% slower in isolation,
+so no production implementation, API, test, accuracy run or DCRNN run was
+created.  A custom kernel remains unjustified without a narrower retained
+operator target.
+
 ## 2026-09-22: Reject public coalesced framework gradients
 
 Latest state:
