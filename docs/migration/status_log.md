@@ -1,5 +1,27 @@
 # Migration Status Log
 
+## 2026-09-22: Reject finite-only TGN attention path
+
+Latest state:
+
+- The common Batch -> model -> task path and all cache/communication behavior
+  remain unchanged.  Native MemShare applies LeakyReLU, edge softmax, message
+  sum, output projection and normalization directly; StarryGL additionally
+  launches three `nan_to_num` operations around the same finite math.
+- The candidate removed only those conversions while retaining max-shifted
+  grouped softmax and its denominator clamp; it was removed after timing.  No
+  attention API, DGL graph, native kernel, fallback, or model branch remains.
+
+Efficiency alternatives considered: the retained Torch scatter path already
+beat the measured DGL attention candidate, while a fused/custom kernel needs a
+narrower justified target.  Reusing the native finite operator order is the
+smallest finite-input change.  Native-reference output/parameter/input-gradient
+and temporal-model checks passed 51 with 7 skips.  Four-A40 WIKI/TGN epochs
+2--10 measured 0.32506 s/epoch, indistinguishable from the retained 0.32495
+pooled baseline and slower than the adjacent 0.32248 control.  Production keeps
+the guards; accuracy and DCRNN were not rerun.  Output:
+`/tmp/starrygl_tgn_finite_attention_candidate_e10`.
+
 ## 2026-09-22: Reject parallel Event sampler output
 
 Latest state:

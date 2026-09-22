@@ -1,5 +1,18 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject finite-only attention operator alignment (2026-09-22)
+
+The common path remains Batch -> `StarryModel.encode` -> task.  TGN's one
+specialized temporal-attention layer already matches MemShare's unscaled score,
+LeakyReLU, softmax, message sum, output projection and layer normalization.
+StarryGL alone applies three `nan_to_num` passes around this finite path.  The
+candidate removed those extra kernels while retaining max-shifted grouped
+softmax and its denominator clamp.  Native-reference output and gradient checks
+passed, but four-A40 WIKI/TGN measured 0.32506 s/epoch versus the retained
+0.32495 pooled baseline and adjacent 0.32248 control.  The implementation was
+removed.  Existing Torch scatter and numerical guards remain; no C++/CUDA
+operator or second model path is introduced.
+
 ## Reject parallel native sampler output (2026-09-22)
 
 The existing native sampler output selector was tested without a source change
