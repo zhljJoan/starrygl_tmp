@@ -12,6 +12,7 @@ from starrygl.runtime.dataloader.blocks import (
     snapshot_row_to_graph_block,
 )
 from starrygl.runtime.sample.blocks import normalize_mfg_blocks, sampled_edge_ids, sampled_feature_graph
+from starrygl.runtime.sample import build_native_sampler
 from starrygl.view import GraphBlock
 
 
@@ -37,6 +38,41 @@ def test_native_sampler_treats_zero_workers_as_synchronous(monkeypatch) -> None:
     )
 
     assert captured["workers"] == 1
+
+
+def test_runtime_native_sampler_keeps_sampled_edge_multiplicity_by_default(monkeypatch) -> None:
+    captured = []
+
+    def from_graph(graph, **kwargs):
+        captured.append(kwargs["deduplicate_edges"])
+        return SimpleNamespace(graph=graph)
+
+    monkeypatch.setattr(NativeTemporalSampler, "from_graph", staticmethod(from_graph))
+    graph = SimpleNamespace(
+        rank=0,
+        num_nodes=2,
+        temporal_csr_view={},
+        runtime_cache={},
+        partition={"node_dist_index": torch.zeros(2, dtype=torch.long)},
+    )
+    store = SimpleNamespace(graph=graph)
+    view = {
+        "src": torch.tensor([0]),
+        "dst": torch.tensor([1]),
+        "edge_ids": torch.tensor([0]),
+        "ts": torch.tensor([1]),
+    }
+
+    build_native_sampler(store, view, fanouts=[1], num_layers=1, options={"reverse": False})
+    build_native_sampler(
+        store,
+        view,
+        fanouts=[1],
+        num_layers=1,
+        options={"reverse": False, "deduplicate_edges": True, "cache_native_sampler": False},
+    )
+
+    assert captured == [False, True]
 
 
 def test_native_compaction_preserves_node_timestamp_instances() -> None:

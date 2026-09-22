@@ -1,5 +1,53 @@
 # Migration Status Log
 
+## 2026-09-22: Preserve native sampled edge multiplicity
+
+Latest state:
+
+- The common Prepare -> task slice -> negatives -> native accessor -> Batch ->
+  dependencies -> model -> task -> state update path is unchanged. Native MFG
+  conversion is the specialization shared by Event and Snapshot-neighbor access.
+- Runtime native blocks now retain sampler edge multiplicity by default, matching
+  MemShare. `deduplicate_edges=True` remains an explicit opt-in; feature fetches
+  still use the existing vectorized unique physical edge rows.
+- No cache, adapter, model branch, loader, training loop, or native operator was
+  added.
+
+Efficiency alternatives considered:
+
+- Profiling showed Python/Torch GraphBlock conversion, not native neighbor
+  selection, was dominant. Retaining sampler output deletes the redundant native
+  CSC dedup pass. DGL reconstruction and a new C++/CUDA kernel would add work.
+- Delaying `col` materialization was also measured, but did not improve the
+  10-epoch run and is not retained.
+
+Files modified:
+
+- `src/starrygl/runtime/sample/{__init__.py,CONTRACT.md}`
+- `tests/test_runtime_graph_blocks.py`
+- `docs/design/memshare_temporal_target_identity_20260913.md`
+
+Verification:
+
+- Focused runtime/model checks: 20 passed, 1 native-library skip. Full suite:
+  541 passed, 45 skipped and the same nine pre-existing plan/default and retired
+  smoothing-helper failures. Production compile-check and diff check passed.
+- Four-A40 WIKI profiling over three epochs reduced rank-max GraphBlock build
+  time from 0.20205 to 0.01507 s/epoch; retained edges increased only 0.058%.
+- The final default 10-epoch no-evaluation run reduced epochs 2--10 from 0.39365
+  to 0.32322 s/epoch (17.9%). Native MemShare remains 0.25505 s/epoch, so the
+  remaining gap is 26.7% and performance parity is not yet reached.
+- The aligned train -> validation -> test run ends at test AP/AUC
+  0.91508/0.91062, within 0.379/0.465 percentage points of MemShare. Outputs are
+  `/tmp/starrygl_tgn_native_multiplicity_default_{e10,eval_e10}`.
+
+Unresolved risks:
+
+- Other datasets may expose larger sampler multiplicity and need an explicit
+  choice before cross-system accuracy claims.
+- DCRNN uses the Snapshot path and is unaffected; its 2 s/epoch gate remains
+  unmet at 2.0838 s/epoch.
+
 ## 2026-09-22: Make negative loss weighting final-ID aware
 
 Latest state:

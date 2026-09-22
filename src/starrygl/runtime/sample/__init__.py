@@ -91,7 +91,7 @@ def build_native_sampler(
         add_reverse_edges=bool(opts.get("add_reverse_edges", opts.get("reverse", True)))
         and not bool(topology.get("_reverse_edges_materialized", False)),
         materialize_col=bool(opts.get("materialize_col", True)),
-        deduplicate_edges=bool(opts.get("deduplicate_edges", True)),
+        deduplicate_edges=bool(opts.get("deduplicate_edges", False)),
         deduplicate_nodes=bool(opts.get("deduplicate_nodes", False)),
         approximate_node_compaction=bool(opts.get("approximate_node_compaction", False)),
         seed=None if opts.get("seed") is None else int(opts["seed"]),
@@ -248,7 +248,7 @@ def _native_sampler_cache_key(
         str(opts.get("output", "compact")),
         bool(opts.get("add_reverse_edges", opts.get("reverse", True))),
         bool(opts.get("materialize_col", True)),
-        bool(opts.get("deduplicate_edges", True)),
+        bool(opts.get("deduplicate_edges", False)),
         bool(opts.get("deduplicate_nodes", False)),
         bool(opts.get("approximate_node_compaction", False)),
         None if opts.get("seed") is None else int(opts["seed"]),

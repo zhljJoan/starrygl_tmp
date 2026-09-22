@@ -23,3 +23,15 @@ The existing packed `node_dist_index`, `node_is_hot`, and Torch boolean indexing
 MemShare's correction is based on the final sampled ID's replica locality, including global-pool draws that land locally. `NegativeSamplePool` therefore accepts one optional vectorized `loss_weight_fn(sampled_ids, pool)` after random sampling. This replaces string-named correction formulas; default sampling still returns unit weights. The protocol-specific formula stays in the benchmark/task caller rather than the runtime or model, and both Event and Snapshot continue through the same task materialization function.
 
 Fresh four-A40 WIKI validation uses the same per-epoch train -> validation -> test lifecycle on both systems, global evaluation destination pools, and persistent but separately seeded random streams. Exact random IDs are intentionally not paired. At epoch 10 StarryGL/MemShare test AP is 0.91321/0.91886 and test AUC is 0.90853/0.91527; the remaining gap is below 0.7 percentage points. This establishes protocol-level accuracy proximity for the WIKI pilot, not exact state-trace equivalence or broader dataset parity.
+
+## Native MFG edge multiplicity (2026-09-22)
+
+The common spine is unchanged through task roots -> native accessor -> Batch ->
+dependencies -> model -> task -> state update. Profiling isolates native MFG
+conversion, shared by Event and Snapshot-neighbor access. MemShare keeps sampled
+block edge multiplicity and only uniques IDs for feature reads. StarryGL now does
+the same by default; explicit edge deduplication remains opt-in. This removes a
+second CSC traversal while the existing `sampled_edge_ids` keeps one vectorized
+unique feature request. Torch/native buffers are reused; DGL block reconstruction
+and a custom kernel add no missing operation. The final WIKI test AP/AUC is
+0.91508/0.91062, within 0.379/0.465 percentage points of MemShare.

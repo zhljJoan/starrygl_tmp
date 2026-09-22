@@ -15,6 +15,9 @@ sample_neighbors(roots, scope) -> (blocks, node_ids, edge_rows)
 
 首版 sampler 在 CPU/native 执行。负样本在同一设备向量化生成，native 调用
 释放 GIL，输出紧凑 pinned tensor；不能先在 GPU 生成 roots 再同步回 CPU。
+GraphBlock 默认保留 sampler 返回的边重数，和 MemShare block 语义一致；静态
+edge feature read 仍按物理行去重。只有明确接受改变消息重数时才设置
+`deduplicate_edges=True`。
 
 ## Event 的因果 root
 
