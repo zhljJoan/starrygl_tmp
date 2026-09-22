@@ -1,5 +1,26 @@
 # Migration Status Log
 
+## 2026-09-22: TGN end-to-end parity profiling baseline
+
+Latest state:
+
+- The current unified StarryGL TGN pipeline was profiled for five four-A40
+  WIKI epochs with the existing access pipeline.  Warm epochs 2--5 were
+  0.3201, 0.3261, 0.3187 and 0.3493 s on rank 0; the retained longer run is
+  about 0.325 s/epoch.
+- Across the same five epochs on rank 0, native graph access accumulated
+  0.584 s, feature/batch launch 0.287 s, and feature/batch finish 0.158 s.
+  These are the first targets for pipeline alignment; no TGN arithmetic change
+  is indicated by the master parity checks.
+- The local MemShare checkout is dirty on `dual_dedup`; its historical ~0.255
+  s/epoch number is not accepted as a clean `master` endpoint.  No production
+  code was changed in this profiling pass.
+
+Efficiency alternatives considered: copy the MemShare training loop, alter the
+already-matching TGN operators, or optimize the existing Stage-A/Stage-B
+boundaries.  The third option is the only candidate compatible with the common
+StarryGL runtime and will be screened one boundary at a time.
+
 ## 2026-09-22: TGN arithmetic parity against MemShare/master
 
 Latest state:
