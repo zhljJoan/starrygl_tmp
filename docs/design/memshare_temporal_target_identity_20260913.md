@@ -1,5 +1,14 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## TGN parity uses the clean MemShare/master reference (2026-09-22)
+
+The TGN model remains on the unified StarryGL path and reuses the existing
+prefetch/CommScheduler/StateManager pipeline.  A clean archive of MemShare's
+`master` commit, rather than the dirty local `dual_dedup` checkout, passed the
+existing three checks for attention output and gradients, GRU memory update,
+and timestamp/mailbox commit semantics.  No model or runtime fork is needed;
+the unresolved difference is end-to-end scheduling cost.
+
 ## Retain the existing native operator chain (2026-09-22)
 
 Kernel work is outside the current cache migration.  The considered

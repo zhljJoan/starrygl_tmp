@@ -1,5 +1,25 @@
 # Migration Status Log
 
+## 2026-09-22: TGN arithmetic parity against MemShare/master
+
+Latest state:
+
+- TGN keeps the StarryGL path `Batch -> dependency access -> TGN.encode ->
+  StateDelta -> StateManager`; no loader, prefetch, pipeline, or public cache
+  interface changed.
+- A clean temporary archive of the actual MemShare `master` commit was used as
+  the reference (the checkout at `/home/zlj/MemShare-public/MemShare` is a
+  dirty `dual_dedup` worktree).  The existing parity checks passed for
+  attention output/gradients, GRU memory update and query-time/mailbox
+  timestamp commit semantics: 3 passed.
+- Therefore no TGN model source change is justified in this pass.  The remaining
+  gap is runtime/pipeline performance, not a demonstrated arithmetic mismatch.
+
+Efficiency alternatives considered: copy the MemShare training loop, change
+the StarryGL model math, or reuse the existing model and runtime boundaries.
+The third option is retained; copying the dirty branch or creating a parallel
+execution stack would invalidate the common interface and the comparison.
+
 ## 2026-09-22: Retain the existing native operator chain
 
 Latest state:
