@@ -8,7 +8,7 @@ from torch import Tensor
 
 from starrygl.model import ModelOutput, StarryModel
 from starrygl.store import StoreBundle
-from starrygl.task import NodePredictionTask, StarryTask
+from starrygl.task import EdgePredictionTask, NodePredictionTask, StarryTask
 
 from .dataloader.pipeline import state_prefetch_enabled
 from .dataloader.loader import DataLoader, with_materialize_device
@@ -272,18 +272,26 @@ def _prepared_supervision_schedule(
     comm,
     device,
 ):
-    """Resolve static full-snapshot node activity with one collective."""
+    """Resolve prepared node/event activity with one collective."""
 
     ptr = getattr(store.labels, "task_ptr", None)
     cache = getattr(store.graph, "runtime_cache", None)
+    static_task = (
+        type(task) is NodePredictionTask
+        and getattr(task, "train_loss_mode", "last_only") == "last_only"
+        and mode == "snapshot"
+        and window_policy == "full_snapshot"
+        and sampling_policy == "full"
+    ) or (
+        type(task) is EdgePredictionTask
+        and mode == "event"
+        and window_policy == "event_window"
+        and sampling_policy == "neighbor"
+    )
     if (
         dist_world_size() <= 1
-        or type(task) is not NodePredictionTask
-        or getattr(task, "train_loss_mode", "last_only") != "last_only"
+        or not static_task
         or batch_callback is not None
-        or mode != "snapshot"
-        or window_policy != "full_snapshot"
-        or sampling_policy != "full"
         or not isinstance(ptr, Tensor)
         or not isinstance(cache, dict)
     ):

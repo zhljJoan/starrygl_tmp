@@ -1,5 +1,24 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Static event supervision schedule (2026-09-22)
+
+The shared path remains Prepare task rows -> event accessor -> Batch ->
+dependencies -> model -> task -> state update. For the built-in event-edge task,
+prepared `task_ptr` fixes each rank's positive supervision activity before the
+epoch, just as it does for the full-snapshot node task. The common runtime can
+therefore reuse its one-vector `CommScheduler` reduction and cached boolean
+schedule; event graph access, negatives, endpoint exchange, TGN math and state
+commit remain the specialization boundary. Custom tasks and callbacks retain
+the per-step guard. This is an extension of the existing scheduling fact, not a
+new cache, communication API, loader or event execution path.
+
+Four-rank WIKI validation retains the extension. Two adjacent ten-epoch pairs
+reduce pooled rank-max time from 0.32979 to 0.32495 s/epoch; the small 1.47%
+benefit is explicitly within visible run jitter. The passing accuracy repeat
+ends at test AP/AUC 0.91328/0.90875, within 0.558/0.652 percentage points of
+native MemShare. The remaining pooled throughput gap is 27.4%, so this is reuse
+of a proven control optimization, not TGN performance parity.
+
 Before implementation: Prepare canonical event/task rows -> DataLoader prepared task slice -> training/evaluation negatives -> Event graph accessor / native MFG -> materialized Batch -> state dependency hydration -> encode -> task -> runtime-owned StateDelta commit. Snapshot uses the same loader, Batch, task and state commit; only graph access and recurrent scan specialize.
 
 The native MFG already carries srcdata/dstdata ts. Target route construction nevertheless searches only node IDs; two occurrences of a node at different cutoffs select the same last row. Lazy routing repeats the same lookup in model graph helpers. This prevents a valid timestamp-aware deduplication claim and can contaminate loss/gradient comparisons with MemShare.

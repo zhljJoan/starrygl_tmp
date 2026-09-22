@@ -1,5 +1,53 @@
 # Migration Status Log
 
+## 2026-09-22: Reuse static supervision scheduling for Event
+
+Latest state:
+
+- The common Prepare task slice -> accessor -> Batch -> dependencies -> model ->
+  task -> state-update path already caches a globally reduced supervision
+  schedule for built-in full-snapshot node tasks. Built-in event-edge tasks have
+  the same prepared `task_ptr` invariant; only accessor, negative, model and
+  state behavior specialize.
+- The runtime condition now also covers exact built-in
+  `EdgePredictionTask + event_window + neighbor`. Custom tasks, callbacks and
+  all dynamic supervision keep the per-step activity collective. No new cache,
+  public option, loader, model branch or communication primitive was added.
+
+Efficiency alternatives considered:
+
+- Reuse one vectorized Torch slice, one existing globally ordered
+  `CommScheduler` reduction and the existing runtime cache. A DGL or native
+  operator cannot improve this ten-element WIKI control vector; another cache
+  interface would duplicate the scheduling fact.
+
+Files modified:
+
+- `src/starrygl/runtime/loop.py`
+- `tests/test_empty_supervision_step.py`
+- `docs/design/memshare_temporal_target_identity_20260913.md`
+
+Verification:
+
+- Focused runtime/TGN checks: 14 passed. Full suite: 543 passed, 45 skipped and
+  the same nine pre-existing stale-default and retired-smoothing failures.
+  Four-rank WIKI/TGN training completed through the ordinary Trainer path.
+- Two adjacent four-A40 control/candidate pairs over rank-max epochs 2--10 were
+  0.33555 -> 0.32255 and 0.32403 -> 0.32735 s/epoch. Their pooled means are
+  0.32979 -> 0.32495 (-1.47%); the benefit is modest relative to run jitter.
+- Two complete candidate train -> validation -> test runs expose the expected
+  unpaired native-sampler variation. The stronger repeat ended at test AP/AUC
+  0.91328/0.90875, within 0.558/0.652 percentage points of native MemShare and
+  0.258/0.189 points of the unchanged StarryGL reference. Outputs are
+  `/tmp/starrygl_tgn_{8e0df7f_control,static_event_activity}*`.
+
+Unresolved risks:
+
+- This removes repeated control communication but does not close TGN parity:
+  the pooled candidate remains 27.4% slower than native MemShare's 0.25505
+  s/epoch. One candidate repeat reached 0.31349 s/epoch, but the paired runs
+  show enough jitter that it is not used as the parity claim.
+
 ## 2026-09-22: Batch static supervision collectives
 
 Latest state:

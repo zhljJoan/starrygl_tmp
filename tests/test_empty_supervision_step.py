@@ -187,7 +187,18 @@ def test_zero_gradient_adam_would_move_but_explicit_empty_step_does_not():
     assert optimizer.state[model.weight]["step"].item() == 2
 
 
-def test_prepared_node_activity_uses_one_cached_collective(monkeypatch):
+@pytest.mark.parametrize(
+    ("task", "mode", "window_policy", "sampling_policy"),
+    [
+        (sg.NodePredictionTask(name="node_regression", loss="mse"),
+         "snapshot", "full_snapshot", "full"),
+        (sg.EdgePredictionTask(loss="bce"),
+         "event", "event_window", "neighbor"),
+    ],
+)
+def test_prepared_activity_uses_one_cached_collective(
+    monkeypatch, task, mode, window_policy, sampling_policy,
+):
     store = SimpleNamespace(
         graph=SimpleNamespace(runtime_cache={}),
         labels=LabelStore(
@@ -199,7 +210,6 @@ def test_prepared_node_activity_uses_one_cached_collective(monkeypatch):
     batches = SimpleNamespace(
         window_ids=range(3), skip=0, maximum=0, split="train",
     )
-    task = sg.NodePredictionTask(name="node_regression", loss="mse")
     comm = CommScheduler()
     calls = []
 
@@ -211,8 +221,8 @@ def test_prepared_node_activity_uses_one_cached_collective(monkeypatch):
     monkeypatch.setattr(loop, "dist_world_size", lambda: 2)
     monkeypatch.setattr(comm, "all_reduce", reduce_remote_activity)
     args = dict(
-        task=task, batches=batches, mode="snapshot",
-        window_policy="full_snapshot", sampling_policy="full",
+        task=task, batches=batches, mode=mode,
+        window_policy=window_policy, sampling_policy=sampling_policy,
         batch_callback=None, comm=comm, device="cpu",
     )
     assert loop._prepared_supervision_schedule(store, **args) == (False, True, True)
