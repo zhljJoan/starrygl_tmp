@@ -1,5 +1,15 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Retain the existing native operator chain (2026-09-22)
+
+Kernel work is outside the current cache migration.  The considered
+compact-sampler dense-index replacement was cancelled before implementation;
+the existing PyTorch/DGL/native graph path remains intact.  Cache work stays at
+the shared dependency boundary: `StateManager`/`AsyncMemoryCommitter` serves
+both DCRNN `neighbor_recurrent` and Event `node_memory`/`mailbox`, while
+Snapshot history is the unavoidable materialization specialization.  No new
+operator, parallel runtime path or public cache type is introduced.
+
 ## Reject Torch CSC segment attention (2026-09-22)
 
 Event MFGs already expose CSC `indptr`, so attention softmax and aggregation

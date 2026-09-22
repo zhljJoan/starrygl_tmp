@@ -1,5 +1,26 @@
 # Migration Status Log
 
+## 2026-09-22: Retain the existing native operator chain
+
+Latest state:
+
+- The canonical Prepare -> task slice -> graph accessor -> Batch -> dependency
+  access -> model -> task -> state commit path is unchanged.  DCRNN
+  `neighbor_recurrent` and Event `node_memory`/`mailbox` continue to share the
+  existing `StateManager`/`AsyncMemoryCommitter` read and commit boundary; only
+  Snapshot history hydration is specialized.
+- A proposed compact-sampler dense-index change was stopped before editing.
+  No C++/CUDA operator, build artifact, model branch, cache policy or public API
+  was added.  The repository remains on the previously measured native chain.
+
+Efficiency alternatives considered: reuse the current PyTorch/DGL/native
+operators, alter the existing C++ sampler index, or add a custom kernel.  Per
+the current migration scope, sampler/kernel work is excluded; subsequent work
+must reuse the existing operators and focus on the common runtime/cache path.
+Focused compile/state/Snapshot tests passed 31 with 9 skips; the one failure is
+the pre-existing stale-default assertion that expects `shared_hot` without a
+shared-node set, while current lowering correctly selects `local`.
+
 ## 2026-09-22: Reject Torch CSC segment attention
 
 Latest state:
