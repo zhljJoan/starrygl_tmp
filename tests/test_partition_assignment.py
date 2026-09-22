@@ -115,6 +115,37 @@ def test_materialize_graph_views_consumes_existing_partition_plan() -> None:
     assert prepared.split_masks["test"].tolist() == [False, False]
 
 
+def test_event_negative_pool_follows_node_replicas_not_edge_owners() -> None:
+    src = torch.tensor([0, 1, 2, 3])
+    dst = torch.tensor([0, 1, 2, 3])
+    plan = partition_graph(
+        src=src,
+        dst=dst,
+        ts=torch.arange(4, dtype=torch.float32),
+        num_nodes=4,
+        config=PartitionConfig(num_parts=2, backend="round_robin"),
+        node_master=torch.tensor([0, 0, 1, 1]),
+        edge_master=torch.tensor([1, 1, 0, 0]),
+        hot_node_ids=torch.tensor([3]),
+    )
+
+    prepared = sg.materialize_graph_views(
+        src=src,
+        dst=dst,
+        ts=torch.arange(4, dtype=torch.float32),
+        config=sg.PrepareConfig(
+            world_size=2,
+            time_ptr_2=torch.tensor([[0, 4]]),
+            include_state_write_routes=False,
+        ),
+        partition_plan=plan,
+        view_plan=sg.ViewPlan(kind="event", required_layouts=("event_view",)),
+    )
+
+    assert prepared.event_views[0]["dst_pool"].tolist() == [0, 1, 3]
+    assert prepared.event_views[1]["dst_pool"].tolist() == [2, 3]
+
+
 def test_materialize_graph_views_preserves_split_label_masks() -> None:
     src = torch.tensor([0, 1, 2])
     dst = torch.tensor([1, 2, 0])

@@ -1,5 +1,47 @@
 # Migration Status Log
 
+## 2026-09-22: Align event negative pools with node replicas
+
+Latest state:
+
+- The shared path remains Prepare window row -> owner task slice -> negatives ->
+  graph accessor -> Batch -> dependencies -> model -> task -> state update. The
+  only specialization is Prepare's event negative candidate set.
+- `event_view.dst_pool` now means destination IDs readable from the rank's
+  authoritative nodes or shared-hot replicas. It no longer follows locally
+  owned edges, which are the task/output ownership plane rather than the node
+  replica plane.
+- The implementation reuses packed `node_dist_index`, `node_is_hot`, and one
+  vectorized Torch mask. No cache class, fallback artifact reader, task/model
+  branch, communication, or Python entity loop was added.
+
+Efficiency alternatives considered:
+
+- The selected Torch filter runs once during Prepare. DGL graph construction
+  and a C++/CUDA operator add overhead to a non-hot-path ownership lookup.
+- Runtime reconstruction would preserve stale prepared artifacts but repeat
+  invariant work and maintain two meanings for `dst_pool`; artifacts should be
+  regenerated instead.
+
+Files modified:
+
+- `src/starrygl/prepare/event.py`
+- `tests/test_partition_assignment.py`
+- `docs/design/memshare_temporal_target_identity_20260913.md`
+
+Verification:
+
+- Focused regression: 41 passed, 1 CUDA skip. The larger first run was 47
+  passed, 1 skipped plus the known unrelated snapshot-hot plan assertion.
+- Fresh WIKI audit over 1,000 global destinations produced rank-local pool
+  counts 663/675/674/671, exactly matching the native MemShare ownership and
+  hot-replica mapping. The production module compile-check passed.
+
+Unresolved risks:
+
+- MemShare's final-ID loss weighting and fixed evaluation-negative protocol
+  remain to be aligned. This change fixes candidate locality only.
+
 ## 2026-09-22: Reuse snapshot cache for DCRNN candidate input
 
 Latest state:

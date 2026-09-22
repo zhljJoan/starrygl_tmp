@@ -13,3 +13,9 @@ Validation planned: repeated node/different cutoff target rows, both negative mo
 ## First four-rank execution: owner response device repair
 
 The actual WIKI run stopped before epoch1: Stage B submits CPU request IDs/order, receives CUDA feature payload after feature cache moves to GPU, then remote_fetch._restore_order passes the CPU order into CUDA index_copy_. This is the common owner response restoration used by features, state and mailbox; repair the index device once there. Same Prepare -> task -> accessor -> Batch -> dependency -> model -> task -> commit spine as above. No collective order or value math changes. Selected Torch .to(value.device) at the restoration point; DGL/custom C++ cannot remove the requirement that CUDA scatter indices reside on device. Tests must include a CPU order with CUDA payload and empty response; rerun actual four-rank driver. Extra per-response small index H2D remains measurable overhead.
+
+## Replica-local negative pool alignment (2026-09-22)
+
+The common spine remains Prepare window row -> task slice -> negatives -> graph accessor -> Batch -> dependencies -> model -> task -> state update. Only Prepare's rank-local negative candidate set changes: it is the global destination set intersected with authoritative nodes plus shared-hot read replicas. Edge ownership continues to own positive targets and loss; it does not define node-read locality.
+
+The existing packed `node_dist_index`, `node_is_hot`, and Torch boolean indexing are sufficient. Computing the pool once in Prepare replaces the prior edge-owner destination pool plus hot merge; no cache, loader, task, model, communication, or per-entity Python path is added. DGL and a native kernel offer no useful work reduction for this one-time vectorized filter. Existing prepared artifacts retain their old pool and must be regenerated for protocol comparisons.

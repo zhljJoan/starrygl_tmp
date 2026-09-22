@@ -5,7 +5,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from starrygl.utils.route import build_state_write_routes_for_rank
+from starrygl.utils.route import build_state_write_routes_for_rank, dist_part
 
 
 def build_event_view_for_rank(
@@ -27,6 +27,8 @@ def build_event_view_for_rank(
 ) -> dict[str, Any]:
     local_global = (edge_master == rank).nonzero(as_tuple=True)[0].long()
     local_dst = dst.index_select(0, local_global)
+    local_nodes = (dist_part(node_dist_index) == rank) | node_is_hot
+    local_dst_pool = global_dst_pool[local_nodes.index_select(0, global_dst_pool.long())]
     local_pos = torch.full((int(edge_master.numel()),), -1, dtype=torch.long)
     local_pos[local_global] = torch.arange(int(local_global.numel()))
     row = {
@@ -35,7 +37,7 @@ def build_event_view_for_rank(
         "src": src.index_select(0, local_global),
         "dst": local_dst,
         "ts": ts.index_select(0, local_global) if ts is not None else torch.empty(0, dtype=torch.float32),
-        "dst_pool": torch.unique(local_dst, sorted=True) if int(local_dst.numel()) else torch.empty(0, dtype=torch.long),
+        "dst_pool": local_dst_pool,
         "global_dst_pool": global_dst_pool,
         "hot_node_ids": hot_node_ids.long(),
         "time_ptr_2": _localize_time_ptr_2(time_ptr_2=time_ptr_2, local_global=local_global),
