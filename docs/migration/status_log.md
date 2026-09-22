@@ -1,5 +1,34 @@
 # Migration Status Log
 
+## 2026-09-22: Reject prepared unique state writes
+
+Latest state:
+
+- Prepare already computes one final `state_write_mask` occurrence per node and
+  window.  The common Event path preserves that mask through task filtering and
+  `EventRows`, but TGN/JODIE/APAN state update currently runs CUDA
+  `torch.unique` again; profiling attributes about 5 ms/batch to this
+  data-dependent synchronization.
+- The candidate made the Prepare invariant explicit for self-loops (one node,
+  one role), normalized older masks the same way at consumption, and returned
+  selected write rows directly.  It was removed after timing; mailbox/state
+  ownership, cache policy, timestamps, target rows, state manager, artifact
+  format and execution spine remain unchanged.
+
+Efficiency alternatives considered: reuse the existing vectorized mask and
+Torch indexing; target-route row reuse was separately measured and rejected,
+and DGL/custom kernels cannot improve an unnecessary unique.  No new route,
+Batch field, cache, model interface, compatibility stack, or Python entity loop
+is introduced.  The unique-only run measured 0.33263 s/epoch (0.32949 excluding
+its epoch-2 spike); the combined existing-target-row version measured 0.33964.
+Both are slower than the retained 0.32495 pooled baseline and adjacent 0.32248
+control.  Focused model/route/native checks passed 79 with 7 skips apart from
+one known stale snapshot-layout expectation, and all current artifact windows
+passed the uniqueness audit.  The work is evidently hidden by the asynchronous
+commit/next-batch pipeline, so production/tests were restored exactly.  Accuracy
+and DCRNN were not rerun.  Outputs: `/tmp/starrygl_tgn_prepared_{unique_state_candidate,
+state_target_rows}_e10`.
+
 ## 2026-09-22: Reject finite-only TGN attention path
 
 Latest state:

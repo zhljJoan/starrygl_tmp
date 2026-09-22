@@ -1,5 +1,27 @@
 # Event row identity for MemShare parity (2026-09-13)
 
+## Reject prepared unique state writes (2026-09-22)
+
+The shared path remains Prepare event rows -> accessor -> Batch -> model ->
+runtime state commit.  `build_state_write_mask` selects the final occurrence of
+each endpoint node in a window, so task-side row filtering can only remove
+writes, never introduce duplicates.  A self-loop is one node even though it has
+both endpoint roles; selecting its source role preserves the same embedding,
+timestamp and message while making the invariant exact for new and old
+artifacts.
+
+The candidate let TGN/JODIE/APAN consume the prepared selection directly instead
+of launching CUDA `torch.unique` and a latest-position scatter in every batch.
+It used the existing mask/index operators; DGL and a custom kernel add no missing
+operation.  It changed no cache freshness, owner/shared plane, communication
+schedule, StateDelta contract, or Snapshot/DCRNN path.
+
+The unique-only screen measured 0.33263 s/epoch.  Its bounded follow-up also
+consumed the existing `TargetRoute.pos_{src,dst}_rows`, but measured 0.33964;
+the retained pooled baseline is 0.32495 s/epoch.  These operations are hidden by
+the asynchronous commit/next-batch pipeline.  All implementation and tests were
+removed, retaining self-loop compatibility and the existing defensive dedup.
+
 ## Reject finite-only attention operator alignment (2026-09-22)
 
 The common path remains Batch -> `StarryModel.encode` -> task.  TGN's one
