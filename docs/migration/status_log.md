@@ -1,5 +1,23 @@
 # Migration Status Log
 
+## 2026-09-22: MemShare/master GPU06 run blocked by upstream master bug
+
+Latest state:
+
+- On `gpu06`, all four A40s were idle and the WIKI data/partition were
+  available.  A clean `master@454ff32` worktree was built with CUDA/native/UVM
+  extensions and reached graph loading, partition setup and model
+  initialization.
+- The first training batch failed inside the unmodified master memory updater:
+  `torch.sigmoid(self.gamma)` received a Python `int` because the non-adaptive
+  path assigns `self.gamma = 1`.  The run therefore produced no valid timing;
+  the worktree was restored to clean source (build output is untracked only).
+
+Efficiency alternatives considered: patch master gamma, use the dirty
+`dual_dedup` branch, or report an inferred number.  None is a clean
+`MemShare/master` performance result, so no endpoint comparison or StarryGL
+code change is accepted from this attempt.
+
 ## 2026-09-22: Isolated MemShare/master benchmark worktree
 
 Latest state:
