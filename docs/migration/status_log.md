@@ -8303,3 +8303,10 @@ not a clean-exit claim. Temporary compatibility shims were confined to the
 external test worktree and restored; no StarryGL source changed. StarryGL's warm
 0.325 s train interval is in the same range, but timing boundaries differ
 (StarryGL excludes evaluation), so exact parity remains unclaimed.
+
+Alignment conclusion: using the common train-only interval, StarryGL 0.325 s
+versus MemShare historical 0.29 s is a 0.035 s (about 12%) gap, with no model
+math or cache-semantics discrepancy found. The remaining difference is runtime
+overhead; it does not justify another kernel or model-path fork. The upstream
+checkpoint aggregation bug prevents a clean-exit artifact, but does not affect
+the completed epoch timings or metrics above.
