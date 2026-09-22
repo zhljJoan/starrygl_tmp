@@ -1,5 +1,26 @@
 # Supervision flag: isolated MemShare optimizer candidate
 
+## Reject fused CUDA Adam (2026-09-22)
+
+The canonical path already has one optimizer construction before every epoch
+loop and one shared optimizer step after Event/Snapshot backward. The profile
+attributes about 50 ms across 30 TGN optimizer steps to the current foreach
+Adam path, although asynchronous GPU timing means only an end-to-end run can
+establish removable time.
+
+The minimum candidate keeps the public optimizer names and hyperparameters but
+uses PyTorch's public `fused=True` lowering for framework-created CUDA Adam and
+AdamW. CPU construction and any optimizer passed by the user are unchanged.
+This is a physical operator choice, not a new option or optimizer API. DGL is
+unrelated; a custom CUDA optimizer is unjustified while the installed Torch
+primitive exists. Retention requires optimizer-state/numerical checks and a
+material four-A40 TGN gain without losing the DCRNN target.
+
+The CUDA trajectory check matched foreach Adam for five steps, but the real
+WIKI/TGN run averaged 0.33782 s/epoch over epochs 2--10 versus 0.32967 for the
+adjacent control, a 2.47% regression. The candidate was removed without running
+DCRNN or full accuracy because the first performance gate failed.
+
 ## Reject persistent gradient views (2026-09-22)
 
 The shared boundary is unchanged: Event/Snapshot and node/edge execution all

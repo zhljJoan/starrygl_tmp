@@ -1,5 +1,28 @@
 # Migration Status Log
 
+## 2026-09-22: Reject fused CUDA Adam
+
+Latest state:
+
+- Event/Snapshot and node/edge training share one framework optimizer builder
+  and one post-backward optimizer call. The current profile reports about
+  50 ms in 30 TGN foreach-Adam steps, but includes asynchronous effects.
+- The bounded candidate selected public Torch fused Adam/AdamW only when the
+  framework constructs an optimizer for CUDA parameters. CPU and explicitly
+  supplied optimizers remain unchanged. No config, model path, loop, cache or
+  custom kernel was introduced. It was removed; production and tests remain
+  byte-identical to `3cf4d38`.
+
+Verification:
+
+- The focused optimizer-lowering test passed. A five-step CUDA Adam trajectory
+  matched the existing optimizer at rtol 2e-6/atol 2e-7 with identical values
+  and step counters.
+- Four-A40 WIKI/TGN epochs 2--10 averaged 0.33782 s/epoch with fused Adam versus
+  0.32967 for the adjacent control, a 2.47% regression. The candidate failed
+  the first timing gate, so DCRNN/full-accuracy campaigns were not run. Output:
+  `/tmp/starrygl_tgn_fused_adam_e10`.
+
 ## 2026-09-22: Reject persistent gradient views
 
 Latest state:
