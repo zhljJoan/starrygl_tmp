@@ -7512,3 +7512,49 @@ acceptance/provenance. Analysis script was run with zero completed formal jobs;
 it lists the active job and62 queued jobs, and reports no aggregate estimates.
 The source manifest's131 files were reverified. Full communication decomposition,
 pooled AP and other explicitly deferred plan items remain unimplemented.
+
+
+## 2026-09-22 Generic cache integration performance gate
+
+Measured pushed `master@d5d2905` through the existing Prepare -> Store ->
+`run_epoch` -> Batch -> state/cache -> model -> task -> state-update spine. No
+benchmark executor, model adapter, registry, or cache implementation was added.
+Flickr DCRNN used hidden size 8, 27 supervised windows, synchronized slowest-rank
+CUDA epoch time, and one process per A40. Epoch 1 is cold and excluded.
+
+| DCRNN mode | GPUs | history W | mean s/epoch |
+|---|---:|---:|---:|
+| exact | 4 | 3 | 6.9047 |
+| bounded stale/cache | 4 | 3 | 6.9993 |
+| exact | 4 | 1 | 2.6597 |
+| bounded stale/cache | 4 | 1 | 2.7953 |
+| exact | 8 | 1 | 2.0838 |
+
+The requested 2.0 s/epoch gate is not met. W=3 recomputes three overlapping
+snapshots per optimizer step; restoring the original W=1 DCRNN protocol removes
+most of that cost. Stale cache does not hide the remaining common compute and is
+slightly slower here because publication/history maintenance remains. A reused,
+previously verified dense-gradient bucket candidate passed 10 CPU/Gloo tests
+(one CUDA skip) plus 19 current focused tests, but its 8-GPU W=1 epochs 2--10
+mean was 2.0967 s versus the unmodified 2.0838 s short control, so it was removed.
+
+Fresh WIKI/TGN (the event-model interpretation of TGNN here), 4 A40s, 10 batches
+per epoch and epochs 2--10: StarryGL 0.39127 s/epoch versus the current MemShare
+checkout 0.25505 s/epoch, so StarryGL is 53.4% slower. A DGL
+`edge_softmax`/`copy_e_sum` attention candidate passed three MemShare math/gradient
+checks and eight current model checks but measured 0.39564 s/epoch; it too was
+removed. Torch scatter, DGL operators, the prior gradient grouping, and a custom
+kernel were considered; the retained Torch path is the smallest and fastest of
+the measured current choices, while a custom kernel remains unjustified without
+a narrower profile.
+
+Fresh final training BCE was 0.72266 for StarryGL and 0.89238 for MemShare, but
+these are not accuracy-parity evidence: the existing audit proves different
+mixed-negative pools/loss weights, hot-replica state semantics, and no common
+fixed evaluation negatives. Random draw identity is intentionally not required;
+the distribution, loss, split and evaluation protocol still must be aligned
+before AP/AUC or convergence parity can be claimed. Benchmark outputs are under
+`/tmp/starrygl_dcrnn_*`, `/mnt/nfs/zlj/starrygl_d5d2905_bench/results`,
+`/tmp/starrygl_tgn_d5d2905_e10`, and
+`/tmp/memshare_native_fresh_20260922_e10`. Only this status log changed in this
+measurement version; production returned exactly to pushed `d5d2905`.
