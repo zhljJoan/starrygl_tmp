@@ -8310,3 +8310,11 @@ math or cache-semantics discrepancy found. The remaining difference is runtime
 overhead; it does not justify another kernel or model-path fork. The upstream
 checkpoint aggregation bug prevents a clean-exit artifact, but does not affect
 the completed epoch timings or metrics above.
+2026-09-22: Historical parity acceptance protocol fixed. Both implementations
+must use the same WIKI split/window order, seed and negative-sample distribution,
+historical mailbox update (including learnable gamma), evaluation negatives and
+metric timing. Report per-epoch train-only wall time plus loss/AP/AUC curves;
+evaluation and checkpoint I/O are excluded from the performance number. A run
+is accepted only when curves and final metrics match within the declared numeric
+tolerance and the median warm train time is within 1.1x. No dedup kernel is
+introduced; existing torch unique/index-remap and communication paths remain.
