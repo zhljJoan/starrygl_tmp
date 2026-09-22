@@ -1,5 +1,23 @@
 # Sliding-window boundary cache
 
+## 2026-09-22: exact DCRNN optimizer scheduling
+
+The common path remains `Prepare -> owner task slice -> Snapshot accessor ->
+Batch -> dependency access -> coupled scan -> task -> state update`. Exact DCRNN
+still blocks on the previous-state Route before its gates and on the autograd
+gate-to-candidate Route before candidate diffusion. Bounded-stale execution
+still uses the versioned detached channels below; this change does not merge or
+reinterpret those two policies.
+
+For built-in full-snapshot node tasks, prepared `task_ptr` makes local
+supervision activity static. The runtime reduces the complete activity vector
+once through the existing globally ordered `CommScheduler`, caches the resulting
+boolean schedule, and uses it only to decide whether an already synchronized
+optimizer step is globally empty. Custom tasks, callbacks, window-mean and other
+views keep the per-step activity collective because their final supervision can
+change after Prepare. This removes repeated control communication without a new
+cache API or model branch and preserves globally empty-window Adam semantics.
+
 ## 2026-09-22: versioned intermediate cache channels
 
 The existing `SnapshotHistory` now also backs detached intermediate dependency

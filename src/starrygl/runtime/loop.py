@@ -8,7 +8,7 @@ from torch import Tensor
 
 from starrygl.model import ModelOutput, StarryModel
 from starrygl.store import StoreBundle
-from starrygl.task import StarryTask
+from starrygl.task import NodePredictionTask, StarryTask
 
 from .dataloader.pipeline import state_prefetch_enabled
 from .dataloader.loader import DataLoader, with_materialize_device
@@ -140,6 +140,21 @@ def run_epoch(
         skip=skip,
         maximum=maximum,
     )
+    supervision_schedule = (
+        _prepared_supervision_schedule(
+            store,
+            task=task,
+            batches=batches,
+            mode=mode,
+            window_policy=window_policy,
+            sampling_policy=sampling_policy,
+            batch_callback=batch_callback,
+            comm=scheduler,
+            device=next(model.parameters()).device,
+        )
+        if training and optimizer is not None and gradient_sync in {"all_reduce", "ddp", "mean"}
+        else None
+    )
 
     total_loss: Tensor | float = 0.0
     total_steps = 0
@@ -151,7 +166,8 @@ def run_epoch(
         and dist_world_size() > 1
         and gradient_sync in {"all_reduce", "ddp", "mean"}
     )
-    for batch in batches:
+    for batch_id, batch in enumerate(batches):
+        globally_active = None if supervision_schedule is None else supervision_schedule[batch_id]
         poll_state_update(active_state_manager)
         if prefetch_state is None:
             finish_state_update(active_state_manager)
@@ -182,7 +198,10 @@ def run_epoch(
                 if training:
                     zero_output_loss(output, model).backward()
                     if optimizer is not None:
-                        step_optimizer(model, optimizer, gradient_sync, scheduler, has_supervision=False)
+                        step_optimizer(
+                            model, optimizer, gradient_sync, scheduler,
+                            has_supervision=False, global_has_supervision=globally_active,
+                        )
                 if should_commit_state:
                     with torch.no_grad():
                         launch_state_update(active_state_manager, model.state_update(batch, output))
@@ -198,7 +217,10 @@ def run_epoch(
                 backward_loss = loss if backward_scale is None else loss * backward_scale.to(loss)
                 backward_loss.backward()
                 if optimizer is not None:
-                    step_optimizer(model, optimizer, gradient_sync, scheduler, has_supervision=True)
+                    step_optimizer(
+                        model, optimizer, gradient_sync, scheduler,
+                        has_supervision=True, global_has_supervision=globally_active,
+                    )
             if should_commit_state:
                 with torch.no_grad():
                     launch_state_update(active_state_manager, model.state_update(batch, output))
@@ -236,6 +258,46 @@ def _skip_empty_batch(batch) -> bool:
         and not needs_empty_state_encode(batch)
         and not (batch.mode == "snapshot" and batch.state)
     )
+
+
+def _prepared_supervision_schedule(
+    store,
+    *,
+    task,
+    batches,
+    mode,
+    window_policy,
+    sampling_policy,
+    batch_callback,
+    comm,
+    device,
+):
+    """Resolve static full-snapshot node activity with one collective."""
+
+    ptr = getattr(store.labels, "task_ptr", None)
+    cache = getattr(store.graph, "runtime_cache", None)
+    if (
+        dist_world_size() <= 1
+        or type(task) is not NodePredictionTask
+        or getattr(task, "train_loss_mode", "last_only") != "last_only"
+        or batch_callback is not None
+        or mode != "snapshot"
+        or window_policy != "full_snapshot"
+        or sampling_policy != "full"
+        or not isinstance(ptr, Tensor)
+        or not isinstance(cache, dict)
+    ):
+        return None
+    window_ids = batches.window_ids[batches.skip :]
+    if batches.maximum:
+        window_ids = window_ids[: batches.maximum]
+    key = ("global_supervision", batches.split, window_ids.start, window_ids.stop)
+    if key not in cache:
+        active = (ptr[window_ids.start + 1 : window_ids.stop + 1]
+                  > ptr[window_ids.start : window_ids.stop]).to(device=device, dtype=torch.int32)
+        comm.all_reduce(active, op=torch.distributed.ReduceOp.MAX, name="prepared_supervision")
+        cache[key] = tuple(bool(value) for value in active.cpu().tolist())
+    return cache[key]
 
 
 def _batch_local_snapshot_state(

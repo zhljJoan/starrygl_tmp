@@ -104,14 +104,28 @@ def sync_gradients(model: StarryModel, mode: str | None) -> None:
         parameter.grad.div_(scale)
 
 
-def step_optimizer(model, optimizer, mode, comm: CommScheduler, *, has_supervision: bool) -> None:
+def step_optimizer(
+    model,
+    optimizer,
+    mode,
+    comm: CommScheduler,
+    *,
+    has_supervision: bool,
+    global_has_supervision: bool | None = None,
+) -> None:
     """Keep empty ranks in gradient collectives without taking an empty Adam step."""
 
     sync_gradients(model, mode)
     if _distributed_sync(mode):
-        active = torch.full((), int(has_supervision), dtype=torch.long, device=next(model.parameters()).device)
-        comm.all_reduce(active, op=dist.ReduceOp.MAX, name="optimizer_supervision")
-        has_supervision = has_supervision or bool(active.item())
+        if global_has_supervision is None:
+            active = torch.full(
+                (), int(has_supervision), dtype=torch.long,
+                device=next(model.parameters()).device,
+            )
+            comm.all_reduce(active, op=dist.ReduceOp.MAX, name="optimizer_supervision")
+            has_supervision = has_supervision or bool(active.item())
+        else:
+            has_supervision = bool(global_has_supervision)
     if has_supervision:
         optimizer.step()
 

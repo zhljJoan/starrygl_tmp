@@ -1,5 +1,65 @@
 # Migration Status Log
 
+## 2026-09-22: Batch static supervision collectives
+
+Latest state:
+
+- The common Prepare -> owner task slice -> Snapshot accessor -> Batch ->
+  dependency access -> coupled scan -> task -> state update path is unchanged.
+  DCRNN's exact previous-state and gate-to-candidate Routes, and its bounded
+  stale cache channels, are unchanged.
+- Built-in full-snapshot `NodePredictionTask` with static prepared supervision
+  now reduces its per-window activity vector once and caches the global boolean
+  schedule. Optimizer steps consume that schedule instead of issuing one scalar
+  activity collective per window. Custom tasks, callbacks, window-mean,
+  sampled/chunk execution and non-node tasks retain the existing per-step guard.
+- This is one runtime scheduling fact, not a new cache, model adapter, loader,
+  execution stack or public option. Every rank enters the same scheduled
+  collective and globally empty windows still skip Adam exactly.
+
+Efficiency alternatives considered:
+
+- The Torch profile attributed about 58--60% of DCRNN GPU time to required DGL
+  diffusion GSpMM, while 28 scalar optimizer-activity reductions cost about
+  70 ms on four GPUs. One vectorized Torch tensor plus the existing
+  `CommScheduler` collective was the smallest reusable removal of that overhead.
+- Replacing prepared DGL diffusion with Torch CSR preserved focused math but
+  measured 4.0248 s/epoch on four GPUs and was removed. DGL bipartite blocks
+  also preserved math, but combined with the retained schedule measured 3.2316
+  versus 3.0895 s/epoch and was removed. A custom C++/CUDA diffusion operator is
+  not justified before DGL/native profiling identifies a narrower kernel gap.
+
+Files modified:
+
+- `src/starrygl/runtime/{loop.py,epoch.py}`
+- `tests/test_empty_supervision_step.py`
+- `docs/design/current/snapshot_boundary_history.md`
+
+Verification:
+
+- Focused snapshot/runtime checks: 39 passed, 2 skipped. Two-rank CPU/Gloo
+  empty-owner and gradient synchronization: 5 passed per rank. The full suite
+  completed with 542 passed, 45 skipped and the same 9 pre-existing failures
+  in stale-default expectations and retired smoothing helpers.
+- A consecutive four-A40 control/candidate comparison over epochs 2--5 was
+  3.3079 -> 3.0895 s/epoch (-6.60%), with the same epoch-5 loss to normal
+  floating-point variation.
+- Two-node/eight-A40 W=1 exact DCRNN repeated ten epochs at 1.9975 s/epoch over
+  epochs 2--10, versus the prior 2.0838 s short control. A first repeat was
+  2.0217 because epochs 3--4 spiked; its stable epochs 5--10 averaged 1.9302.
+  The exact final source then repeated epochs 2--3 at 1.8375 s/epoch. Final
+  epoch-10 loss was 0.0613518368 versus prior 0.0613518357.
+- Outputs are `/tmp/starrygl_dcrnn_{aba66ec_control,static_activity}*` and
+  `/mnt/nfs/zlj/starrygl_static_activity_candidate_20260922/results/`.
+
+Unresolved risks:
+
+- The ten-epoch mean clears 2 s by only 0.12%; inter-node jitter remains visible,
+  so this is a reached gate, not a robust throughput margin. Test-set quality
+  and longer convergence are not newly measured because model math, inference
+  and state/cache behavior did not change.
+- TGN still has the separately recorded throughput gap to MemShare.
+
 ## 2026-09-22: Reject unpaired TGN micro-optimizations
 
 Latest state:

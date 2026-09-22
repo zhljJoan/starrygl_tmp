@@ -185,3 +185,39 @@ def test_zero_gradient_adam_would_move_but_explicit_empty_step_does_not():
     optimizer.step()
     assert not torch.equal(before[0][0], model.weight)
     assert optimizer.state[model.weight]["step"].item() == 2
+
+
+def test_prepared_node_activity_uses_one_cached_collective(monkeypatch):
+    store = SimpleNamespace(
+        graph=SimpleNamespace(runtime_cache={}),
+        labels=LabelStore(
+            task_kind="node",
+            task_ptr=torch.tensor([0, 0, 2, 2]),
+            task_payload={"node_ids": torch.tensor([1, 2])},
+        ),
+    )
+    batches = SimpleNamespace(
+        window_ids=range(3), skip=0, maximum=0, split="train",
+    )
+    task = sg.NodePredictionTask(name="node_regression", loss="mse")
+    comm = CommScheduler()
+    calls = []
+
+    def reduce_remote_activity(active, **kwargs):
+        calls.append(kwargs["name"])
+        active[2] = 1
+        return active
+
+    monkeypatch.setattr(loop, "dist_world_size", lambda: 2)
+    monkeypatch.setattr(comm, "all_reduce", reduce_remote_activity)
+    args = dict(
+        task=task, batches=batches, mode="snapshot",
+        window_policy="full_snapshot", sampling_policy="full",
+        batch_callback=None, comm=comm, device="cpu",
+    )
+    assert loop._prepared_supervision_schedule(store, **args) == (False, True, True)
+    assert loop._prepared_supervision_schedule(store, **args) == (False, True, True)
+    assert calls == ["prepared_supervision"]
+    assert loop._prepared_supervision_schedule(
+        store, **{**args, "batch_callback": lambda batch: batch}
+    ) is None
