@@ -44,6 +44,7 @@ def fit(
     device: str | torch.device | None = None,
     compute_metrics: bool | None = None,
     epoch_callback: Any | None = None,
+    batch_callback: Any | None = None,
 ) -> list[EpochResult]:
     store_obj = self._store(store, artifact_root=artifact_root, rank=rank, map_location=map_location, mmap=mmap)
     model_obj = self._model(model, store_obj)
@@ -90,6 +91,7 @@ def fit(
             ),
             gradient_sync=self._gradient_sync(),
             wait_policy=self.plan.wait_policy,
+            batch_callback=batch_callback,
         )
         elapsed = time.perf_counter() - started
         cumulative += elapsed

@@ -8318,3 +8318,14 @@ evaluation and checkpoint I/O are excluded from the performance number. A run
 is accepted only when curves and final metrics match within the declared numeric
 tolerance and the median warm train time is within 1.1x. No dedup kernel is
 introduced; existing torch unique/index-remap and communication paths remain.
+2026-09-22: Started historical convergence tracing by exposing the existing
+`run_epoch(batch_callback=...)` hook through `Trainer.fit`; this keeps the
+canonical loader -> Batch -> model -> task -> state-update spine unchanged and
+adds no logger, adapter, kernel, or per-node loop. The callback boundary is the
+unavoidable experiment-only observation point. Modified
+`src/starrygl/runtime/train.py` and `tests/test_runtime_memory.py`; verified with
+`python -m pytest tests/test_runtime_memory.py tests/test_tgn_memshare_math.py -q`
+(15 passed, 5 skipped). Torch/DGL/native alternatives were unnecessary because
+the existing Python callback runs once per batch only when explicitly enabled.
+Remaining risk: enabling trace affects wall time, so parity timing must be run
+with tracing disabled after the first divergent window is identified.

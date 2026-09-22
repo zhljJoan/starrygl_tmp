@@ -126,6 +126,33 @@ def test_evaluate_and_predict_advance_temporal_state_by_default(monkeypatch) -> 
     assert calls[1]["commit_state"] is True
 
 
+def test_fit_forwards_batch_trace_callback(monkeypatch) -> None:
+    calls = []
+
+    def run_epoch(**kwargs):
+        calls.append(kwargs)
+        return EpochResult(loss=0.0, steps=0)
+
+    monkeypatch.setattr(runtime_train, "run_epoch", run_epoch)
+    trainer = sg.compile(
+        data_source={"temporal_representation": "event_stream"},
+        backbone=torch.nn.Linear(1, 1),
+        task_segment={"name": "node_regression"},
+        runtime={"device": "cpu"},
+    )
+    store = StoreBundle(
+        graph=GraphStore(num_nodes=1),
+        features=FeatureManager(node_features={"x": torch.zeros(1, 1)}),
+        labels=LabelStore(node_label=torch.zeros(1)),
+    )
+    callback = object()
+
+    trainer.fit(store=store, model=torch.nn.Linear(1, 1), task=object(),
+                optimizer=object(), epochs=1, batch_callback=callback)
+
+    assert calls[0]["batch_callback"] is callback
+
+
 def test_decoupled_snapshot_eval_and_predict_replay_exact_history(monkeypatch) -> None:
     calls = []
 
