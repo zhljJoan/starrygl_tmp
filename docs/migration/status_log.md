@@ -8292,3 +8292,14 @@ before AP/AUC or convergence parity can be claimed. Benchmark outputs are under
 `/tmp/starrygl_tgn_d5d2905_e10`, and
 `/tmp/memshare_native_fresh_20260922_e10`. Only this status log changed in this
 measurement version; production returned exactly to pushed `d5d2905`.
+2026-09-22: Rechecked the requested `MemShare/master` historical mode on gpu06
+(commit `454ff32`, 4x A40, WIKI, shared cache 0.3). Historical smoothing uses
+the learnable float gamma; `all_update` is not a valid comparison because the
+clean upstream path calls sigmoid on its integer bypass sentinel. Warm epochs
+measured about 0.29 s for train and 0.41 s including evaluation, with validation
+AP/AUC 0.895013/0.889605 and test AP/AUC 0.882788/0.870733. The final
+checkpoint path is malformed upstream, so timing is recorded as an observation,
+not a clean-exit claim. Temporary compatibility shims were confined to the
+external test worktree and restored; no StarryGL source changed. StarryGL's warm
+0.325 s train interval is in the same range, but timing boundaries differ
+(StarryGL excludes evaluation), so exact parity remains unclaimed.
