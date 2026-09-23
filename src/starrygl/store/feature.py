@@ -17,6 +17,7 @@ def build_static_feature_shards(
     edge_feat: Tensor | None = None,
     include_static_one_hop: bool = False,
     replicate_node_features: bool = False,
+    replicate_edge_features: bool = False,
 ) -> list[dict[str, Tensor]]:
     partition = prepared.partition
     world_size = int(prepared.meta.get("world_size", 1))
@@ -43,12 +44,16 @@ def build_static_feature_shards(
                 prepared=prepared,
                 include_static_one_hop=bool(include_static_one_hop),
             )
-        edge_ids = _edge_feature_ids_for_rank(
-            rank=rank,
-            edge_part=edge_part,
-            edge_loc=edge_loc,
-            prepared=prepared,
-            include_snapshot_edges=bool(include_static_one_hop),
+        edge_ids = (
+            torch.arange(int(edge_index.numel()), dtype=torch.long)
+            if bool(replicate_edge_features)
+            else _edge_feature_ids_for_rank(
+                rank=rank,
+                edge_part=edge_part,
+                edge_loc=edge_loc,
+                prepared=prepared,
+                include_snapshot_edges=bool(include_static_one_hop),
+            )
         )
         row = {
             "rank": torch.tensor(rank, dtype=torch.long),
@@ -57,6 +62,8 @@ def build_static_feature_shards(
         }
         if bool(replicate_node_features):
             row["node_features_replicated"] = torch.tensor(True, dtype=torch.bool)
+        if bool(replicate_edge_features):
+            row["edge_features_replicated"] = torch.tensor(True, dtype=torch.bool)
         row["node_row_map"] = _dense_row_map(row["node_ids"], size=int(node_index.numel()))
         row["edge_row_map"] = _dense_row_map(row["edge_ids"], size=int(edge_index.numel()))
         if node_feat is not None:

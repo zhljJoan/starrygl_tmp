@@ -179,6 +179,7 @@ class FeatureManager:
         node_ids: Tensor | None = None,
         edge_ids: Tensor | None = None,
         node_features_replicated: bool = False,
+        edge_features_replicated: bool = False,
     ) -> None:
         self.node_features = dict(node_features or features or {})
         self.edge_features = dict(edge_features or {})
@@ -187,6 +188,7 @@ class FeatureManager:
         self.node_ids = node_ids.long() if node_ids is not None else None
         self.edge_ids = edge_ids.long() if edge_ids is not None else None
         self.node_features_replicated = bool(node_features_replicated) or _row_map_all_present(self.node_row_map)
+        self.edge_features_replicated = bool(edge_features_replicated) or _row_map_all_present(self.edge_row_map)
         self.node_row_map_is_identity = _row_map_is_identity(self.node_row_map)
         self.edge_row_map_is_identity = _row_map_is_identity(self.edge_row_map)
         self._device_lock = Lock()
@@ -204,6 +206,7 @@ class FeatureManager:
             node_ids=shard.get("node_ids"),
             edge_ids=shard.get("edge_ids"),
             node_features_replicated=bool(shard.get("node_features_replicated", False)),
+            edge_features_replicated=bool(shard.get("edge_features_replicated", False)),
         )
 
     def read_nodes(self, ids: Tensor, names: Sequence[str] | None = None) -> dict[str, Tensor]:

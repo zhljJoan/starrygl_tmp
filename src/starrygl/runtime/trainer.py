@@ -112,6 +112,9 @@ class Trainer(TrainerOptions):
                 node_feat=graph_data.node_feat,
                 edge_feat=graph_data.edge_feat,
                 include_static_one_hop=include_one_hop,
+                replicate_edge_features=bool(
+                    self.preprocess_config.get("replicate_edge_features", False)
+                ),
             )
             label_shards = build_label_shards(
                 prepared=prepared,
@@ -208,8 +211,7 @@ class Trainer(TrainerOptions):
         partition_inputs = (node_master, edge_master, hot_node_ids)
         if node_to_chunk is not None:
             partition_inputs += (node_to_chunk,)
-        return artifact_fingerprint(
-            {
+        signature = {
                 "format": PREPARE_FORMAT,
                 "data": data,
                 "prepare": prepare,
@@ -220,7 +222,9 @@ class Trainer(TrainerOptions):
                 "feature_layout": str(self.preprocess_config.get("feature_layout", "separate")),
                 "include_static_one_hop": bool(include_static_one_hop),
             }
-        )
+        if self.preprocess_config.get("replicate_edge_features", False):
+            signature["replicate_edge_features"] = True
+        return artifact_fingerprint(signature)
 
     def _validate_artifact_store(self, store) -> None:
         meta = store.graph.prepare.get("meta", {}) if store.graph.prepare is not None else {}

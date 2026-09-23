@@ -52,6 +52,7 @@
       "speed_partition_beta": 0.1,
       "chunks_per_rank": 128,
       "hot_node_ratio": 0.1,
+      "replicate_edge_features": true,
       "time_split": "batch",
       "target_batch_size": 3000,
       "split_ratios": [0.7, 0.15, 0.15]

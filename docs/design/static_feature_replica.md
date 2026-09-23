@@ -17,3 +17,11 @@ the Trainer/config wiring was removed. The existing low-level shard-builder
 capability remains unchanged; no runtime cache or second execution path was
 added. Sampled edge features, not node features, are the next feature-volume
 candidate.
+
+## Sampled edge-feature upper bound
+
+The same optional Prepare lowering can replicate immutable edge features and
+let `FeatureManager` satisfy sampled-edge reads locally. This removes the
+edge-feature owner request/count/response phase without changing Batch or model
+math. It defaults off; WIKI enables it only to test the communication upper
+bound before considering a capacity-bounded prepared replica set.

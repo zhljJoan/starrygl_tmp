@@ -128,7 +128,8 @@ def _launch(store, kind, ids, names, comm, assume_unique, defer_local_read):
         if int(unique.numel()) < int(ids.numel()):
             compact = _launch(store, kind, unique, keys, comm, True, defer_local_read)
             return _restore_duplicates(compact, inverse)
-    uses_remote = distributed() and not (kind == "node" and manager.node_features_replicated)
+    replicated = manager.node_features_replicated if kind == "node" else manager.edge_features_replicated
+    uses_remote = distributed() and not replicated
     if not int(ids.numel()):
         return _launch_remote(store, kind, ids, keys, comm, None, ids, False) if uses_remote else PendingNodeFeatureFetch(
             keys=keys, out=_empty(manager, kind, keys, 0), kind=kind

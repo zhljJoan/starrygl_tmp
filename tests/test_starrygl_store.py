@@ -273,6 +273,26 @@ def test_feature_manager_reads_node_and_edge_features() -> None:
     assert torch.equal(edge["w"], torch.tensor([[2.0], [0.0]]))
 
 
+def test_static_edge_feature_replica_is_locally_readable() -> None:
+    prepared = _prepare_graph_data(
+        {"src": torch.tensor([0, 1]), "dst": torch.tensor([1, 2]), "num_nodes": 3},
+        config=sg.PrepareConfig(world_size=2, chunks_per_rank=1),
+        node_master=torch.tensor([0, 0, 1]),
+        edge_master=torch.tensor([0, 1]),
+        hot_node_ids=torch.empty(0, dtype=torch.long),
+    )
+    shards = sg.build_static_feature_shards(
+        prepared=prepared,
+        edge_feat=torch.tensor([[3.0], [4.0]]),
+        replicate_edge_features=True,
+    )
+
+    for shard in shards:
+        manager = sg.FeatureManager.from_shard(shard)
+        assert manager.edge_features_replicated
+        assert torch.equal(manager.read_edges(torch.tensor([1, 0]))["edge"], torch.tensor([[4.0], [3.0]]))
+
+
 def test_feature_manager_row_map_reads_logical_node_and_edge_ids() -> None:
     manager = sg.FeatureManager(
         node_features={"x": torch.tensor([[10.0], [20.0]], dtype=torch.float32)},

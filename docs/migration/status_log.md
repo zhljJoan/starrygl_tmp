@@ -8566,3 +8566,16 @@ shard builder remains unchanged. Output:
 the node-feature request phase is not wall-critical; the next complete-phase
 candidate is sampled edge-feature access, whose 172-wide payload dominates
 the feature artifacts. Eight-GPU remains gated.
+
+2026-09-23: Added the analogous optional static edge-feature replica screen.
+Prepare stores all immutable edge rows per rank and `FeatureManager` marks the
+edge plane locally complete, so the common dependency provider skips the whole
+sampled-edge owner request/count/response phase. The option defaults off and
+is fingerprinted when enabled; WIKI explicitly enables it for this upper-bound
+test. Focused store/dataloader/CLI tests passed 27 with 2 skips. Four-A40 warm
+epochs 2--10 measured median/mean 0.6636/0.6585 s versus the adjacent
+partitioned-feature control's 0.6887/0.6945 s. Each WIKI feature shard grows
+from about 30 MB to 107 MB. Output:
+`/mnt/nfs/zlj/starrygl_static_edge_replica_screen_4gpu`. Retain only as a
+screened candidate pending 50-epoch convergence/performance and collective
+trace validation; eight-GPU remains gated.
