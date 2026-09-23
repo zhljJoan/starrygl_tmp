@@ -8671,6 +8671,21 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
+2026-09-23: Started full exact-route lookahead alignment with MemShare/master
+after isolated response packing regressed. The existing depth-one DataLoader
+now releases the current ready batch as soon as Stage B may start the next
+batch, allowing exact count/request/owner gather/response launch for `k+1` to
+overlap local encode for `k`. Before endpoint communication, the runtime waits
+until all `k+1` dependency collectives have been submitted, preserving one
+process group's global order without a barrier. Models whose encode itself
+contains collectives (model-recurrent or multi-layer decoupled scans) retain the
+old pre-encode wait. No model owns the loader, and no queue, process group,
+payload packing, public API, kernel or cache semantics were added. Modified
+files: `runtime/dataloader/loader.py`, `runtime/loop.py`, the loader contract,
+focused ordering tests, and this log. Focused Event/Snapshot/loader/state tests
+pass 48 with 12 skips; compile, line-limit and diff checks pass. Four-GPU
+deadlock/performance screening is pending; eight-GPU remains gated.
+
 2026-09-23: Rejected exposing the dynamic owner-count exchange as an async
 handle without moving its dependency boundary. The candidate launched the
 fixed-size count all-to-all through the existing `CommScheduler`, immediately

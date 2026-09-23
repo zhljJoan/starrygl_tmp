@@ -56,15 +56,19 @@ Stage A 取出 tuple 后在当前 compute stream 上执行 `wait_event`，登记
 初始化先完成 `prefetch(k0)`。稳态每个 `k` 固定为：
 
 ```text
-Stage B 提交 prefetch(k+1) 的全部通信
-  -> 唤醒 Stage A(k)
-  -> Stage A: exact state / layer forward / endpoint / reverse / gradient / commit
+Stage A 取得 ready(k) 并唤醒 Stage B
+  -> Stage B 提交 prefetch(k+1) 的精确 route / payload
+  || Stage A 执行不含 collective 的本地 encode(k)
+  -> endpoint 或 model collective 前等待 launch(k+1) 完成
+  -> Stage A: endpoint / reverse / gradient / commit
   -> Stage A ack
   -> Stage B 才能提交 prefetch(k+2)
 ```
 
-不再增加唯一 dispatcher 或内部 `CommPlan`。双缓冲握手直接保证每个 rank 都先
-提交 `prefetch(k+1)`，再进入 A(k)；runtime layerwise scan 独立保证各层顺序。
+不增加 dispatcher 或新队列。普通 Event/coupled encode 用本地计算覆盖下一批
+route；model-recurrent 或多层 decoupled encode 自身包含 collective，因此在 encode
+前等待。双缓冲握手保证每个 rank 都先提交 `prefetch(k+1)`，再进入 A(k) 的下一
+collective；runtime layerwise scan 独立保证各层顺序。
 使用同一 process group 时，各 rank 必须经过相同的 collective 调用点。缺少
 `k+1` 的尾部 step、没有 target 或没有 Route 行时，只要 peer 需要通信，本 rank
 仍提交空 payload。
