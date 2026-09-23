@@ -8606,3 +8606,17 @@ about 1.69 GB to 1.82 GB per rank. Output:
 `/mnt/nfs/zlj/starrygl_edge_replica_gpu_resident_screen_4gpu`. Retain as a
 screened capacity-selected candidate pending full convergence and trace
 validation; eight-GPU remains gated.
+
+2026-09-23: The 50-epoch GPU-resident edge-replica validation passed. Warm
+epochs 2--50 measured median/mean 0.6192/0.6200 s, 7.6%/8.0% below the original
+0.6699/0.6740 s path. Test AP/AUC was 0.969843/0.964926, so the historical
+convergence curve remains aligned. Peak allocated memory was 1.82 GB per rank.
+Output: `/mnt/nfs/zlj/starrygl_edge_replica_gpu_resident_convergence_4gpu`.
+The matched trace retained 1,200 send/recv launches and reduced their aggregate
+time from 0.633 s to 0.567 s; `cudaMemcpyAsync` was still 13,224 launches /
+1.620 s, far above MemShare's 12,548 / 0.710 s. Profile:
+`/mnt/nfs/zlj/starrygl_edge_replica_gpu_resident_profile_4gpu/timeline.nsys-rep`.
+The candidate is retained without a new abstraction or kernel. Remaining parity
+work must attribute the similarly numerous but slower copies and remove another
+complete dependency stage; four-GPU is still 2.07x MemShare and eight-GPU
+remains gated.
