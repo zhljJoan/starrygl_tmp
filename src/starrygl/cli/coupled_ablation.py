@@ -230,6 +230,7 @@ def main(argv=None):
     options = trainer._sampler_options(None, train=True, split="train") if args.config else {
         "access_pipeline": args.access_pipeline, "snapshot_dgl_gcn": True,
         "rolling_snapshot_cache": not args.no_rolling_snapshot_cache, "snapshot_reverse_direction": False}
+    options["access_pipeline"] = bool(args.access_pipeline or options.get("access_pipeline", False))
     options["progress_every"] = 0 if args.no_audit else 5
     common = dict(store=store, model=model, task=build_task_from_config(trainer.task),
                   mode=trainer._batch_mode(None), window_policy=trainer._window_policy(None),

@@ -41,13 +41,14 @@ def test_config_experiment_records_quality_and_workload(tmp_path, monkeypatch, m
     output = tmp_path / "run"
     args = ["--config", str(path), "--artifact-root", str(tmp_path / "prepared"),
             "--output", str(output), "--world-size", "1", "--epochs", "1",
-            "--device", "cpu", "--no-audit", "--target-batch-size", "5"]
+            "--device", "cpu", "--no-audit", "--access-pipeline", "--target-batch-size", "5"]
     main(args + ["--prepare-only"])
     main(args)
     result = json.loads((output / "result.json").read_text())
     manifest = json.loads((output / "manifest.json").read_text())
     assert "increment_term_enabled" not in manifest
     assert manifest["compile"]["runtime"]["preprocess"]["target_batch_size"] == 5
+    assert manifest["resolved_sampler_options"]["access_pipeline"] is True
     epoch = json.loads((output / "epochs.jsonl").read_text())
     assert result["workload"]["train_prepared_targets"] > 0
     assert result["test_loss"] >= 0 and result["best_epoch"] == 1

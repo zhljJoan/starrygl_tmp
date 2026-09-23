@@ -8511,3 +8511,13 @@ launch instead: StarryGL and MemShare have similar memcpy call counts
 versus 0.710 s. The next parity work must inspect buffer/device transfers and
 the common materialize/communication schedule, not add another state-cache or
 packing variant. Eight-GPU remains gated.
+2026-09-23: Fixed the experiment CLI so explicit `--access-pipeline` overrides
+a loaded config; previously the flag was silently ignored whenever `--config`
+was used. The focused CLI test now verifies the resolved sampler option and
+passes (2 passed, 1 skipped). A real gpu06 four-A40 10-epoch train-only run then
+measured epochs 2--10 median 0.6953 s versus the retained 0.6699 s default, so
+pipeline execution is not enabled in the matched config and no convergence run
+is needed. Output: `/mnt/nfs/zlj/starrygl_real_access_pipeline_screen_4gpu`.
+The existing common loader/prefetch path is retained; this result rejects
+thread/stream prefetch as the current WIKI parity lever. Eight-GPU remains
+gated.
