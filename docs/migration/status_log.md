@@ -8633,3 +8633,13 @@ trajectory and 1.81 GB peak allocation. Output:
 `/mnt/nfs/zlj/starrygl_replicated_edge_direct_screen_v2_4gpu`. Retain as a
 screened candidate pending 50-epoch convergence validation; eight-GPU remains
 gated.
+
+2026-09-23: The 50-epoch direct replicated-feature validation passed. Warm
+epochs 2--50 measured median/mean 0.6041/0.6080 s, 2.4%/1.9% below the prior
+GPU-resident replica and 9.8%/9.8% below the original retained path. Test
+AP/AUC was 0.969481/0.964472; the full train/validation curve remained aligned
+and peak allocation stayed at 1.82 GB per rank. Output:
+`/mnt/nfs/zlj/starrygl_replicated_edge_direct_convergence_4gpu`. The fast path
+is retained. Four-GPU is now 2.02x MemShare/master, so the remaining gap is not
+feature transfer; trace evidence points to per-window scalar device-to-host
+synchronization and state/cache communication. Eight-GPU remains gated.
