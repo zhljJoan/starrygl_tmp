@@ -95,13 +95,22 @@ def sync_gradients(model: StarryModel, mode: str | None) -> None:
     if not _distributed_sync(mode):
         return
     scale = float(dist.get_world_size())
+    buckets: dict[tuple[torch.device, torch.dtype], list[Tensor]] = {}
     for parameter in model.parameters():
         if not parameter.requires_grad:
             continue
         if parameter.grad is None:
             parameter.grad = torch.zeros_like(parameter)
-        dist.all_reduce(parameter.grad)
-        parameter.grad.div_(scale)
+        buckets.setdefault((parameter.grad.device, parameter.grad.dtype), []).append(parameter)
+    for parameters in buckets.values():
+        packed = torch.cat([parameter.grad.reshape(-1) for parameter in parameters])
+        dist.all_reduce(packed)
+        packed.div_(scale)
+        offset = 0
+        for parameter in parameters:
+            size = parameter.numel()
+            parameter.grad = packed[offset : offset + size].view_as(parameter)
+            offset += size
 
 
 def step_optimizer(

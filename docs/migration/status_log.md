@@ -8404,3 +8404,21 @@ accounts for 4,620 launches and 1.880 s (55.4%). CUDA API totals include 68,522
 `cudaLaunchKernel` calls. This classifies the remaining path as communication /
 launch-latency dominated, not compute dominated. The next clean four-GPU run is
 required before accepting or rejecting the metric-boundary change.
+2026-09-23: The corrected 50-epoch four-A40 run completed with empty train
+metrics, warm median/mean 0.6770/0.6798 s and test AP/AUC
+0.968663/0.963303. The metric-boundary fix is correct but does not close the
+2.26x performance gap to MemShare's 0.2997 s. Output:
+`/mnt/nfs/zlj/starrygl_parity_4gpu_3206bb0`.
+
+A matched two-epoch train-only Nsight comparison isolates communication as the
+gap. StarryGL used 62,549 non-NCCL kernels / 1.477 s versus MemShare's 66,542 /
+1.614 s, so another model or attention kernel is not indicated. StarryGL used
+4,620 NCCL kernels / 1.674 s versus MemShare's 1,052 / 0.792 s. In particular,
+StarryGL issued 2,160 float all-reduce kernels because the common optimizer
+boundary reduced every parameter separately, while MemShare issued 160 through
+one dtype bucket per batch. The runtime now applies that same direct Torch
+bucket at the one shared gradient-sync boundary; no model, cache, sampler,
+public API, or native kernel changed. Local focused tests passed 7 with 1 skip;
+the two-rank missing-gradient Gloo test passed on both ranks. Four-GPU timing
+and convergence remain the acceptance gate before shared-state communication
+is changed.

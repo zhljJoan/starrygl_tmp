@@ -16,6 +16,22 @@
     "cudaMemcpyAsync_calls": 13656,
     "cudaMemcpyAsync_total_time_ns": 2239613568
   },
+  "matched_train_only_comparison": {
+    "memshare": {
+      "profile": "/mnt/nfs/zlj/memshare_master_profile_4gpu_20260923/timeline.nsys-rep",
+      "compute_launches": 66542,
+      "compute_time_ns": 1614366626,
+      "nccl_launches": 1052,
+      "nccl_time_ns": 792177701
+    },
+    "starrygl": {
+      "profile": "/mnt/nfs/zlj/starrygl_profile_trainonly_4gpu_3206bb0/timeline.nsys-rep",
+      "compute_launches": 62549,
+      "compute_time_ns": 1476532004,
+      "nccl_launches": 4620,
+      "nccl_time_ns": 1674131807
+    }
+  },
   "classification": {
     "primary": "latency",
     "secondary": "communication",
