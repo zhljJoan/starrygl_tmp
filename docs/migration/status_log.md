@@ -8643,3 +8643,18 @@ and peak allocation stayed at 1.82 GB per rank. Output:
 is retained. Four-GPU is now 2.02x MemShare/master, so the remaining gap is not
 feature transfer; trace evidence points to per-window scalar device-to-host
 synchronization and state/cache communication. Eight-GPU remains gated.
+
+2026-09-23: A matched trace and Python cumulative profile narrowed the next
+bottleneck. The direct-replica trace removed 80 host-to-device copies but left
+NCCL unchanged at 1,200 send/recv and 672 all-gather launches; tiny
+device-to-host calls still consumed 1.409 s aggregate across four ranks and two
+epochs. Profile:
+`/mnt/nfs/zlj/starrygl_replicated_edge_direct_profile_4gpu/timeline.nsys-rep`.
+Per-rank profiling attributed about 0.28 s/epoch to waiting for the loader and
+0.08--0.14 s/epoch to TGN event-memory endpoint construction/deduplication.
+Disabling the existing access pipeline was rejected: its four-A40 epochs 2--10
+median was about 0.6258 s versus the retained 0.6041 s full-run median. Output:
+`/mnt/nfs/zlj/starrygl_replicated_edge_no_pipeline_screen_4gpu`. No profiling
+or pipeline switch remains in production. The next candidate should reuse
+prepared event endpoint/update rows rather than add another communication or
+cache path; eight-GPU remains gated.
