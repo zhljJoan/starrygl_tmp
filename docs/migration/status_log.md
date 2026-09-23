@@ -8434,3 +8434,18 @@ optimizer boundary without a new API or kernel. Four-GPU performance is not
 accepted and the eight-GPU arm remains gated; the next work is existing
 owner/shared-state communication, which the trace identifies as the dominant
 remaining protocol difference.
+2026-09-23: Rejected generic owner-payload bucketing. The traced common path is
+prepared Event row -> Batch -> atomic memory/mailbox read -> TGN/task ->
+StateDelta -> authoritative owner commit -> optional shared-hot publication;
+only payload shape and local apply are state-kind specializations. A candidate
+changed only `store/remote_fetch.py`, packing same-device/dtype row fields with
+Torch `cat` before the existing owner push; no API, route, ordering, cache
+semantics, DGL path, or kernel changed. Local state/store tests passed 31 with
+5 skips, and two-rank Gloo owner/empty-route checks passed 2 per rank. On gpu06,
+the matched four-A40 10-epoch train-only screen had epochs 2--10 median
+0.6941 s versus the retained gradient-bucket screen's 0.6481 s, so packing is
+slower and all production/test changes were removed. Output:
+`/mnt/nfs/zlj/starrygl_owner_bucket_screen_4gpu`. The design trace is recorded
+in `src/starrygl/runtime/state/CONTRACT.md`; remaining work should eliminate a
+protocol phase or consume prepared static routes rather than add copy-based
+packing. Eight-GPU remains gated.

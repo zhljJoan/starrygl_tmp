@@ -139,6 +139,20 @@ model.state_update(batch, output)
 rank 一致的 model context，各 replica 按同一 temporal order 更新；只有 rank 0 写
 checkpoint，载入后广播同一 value。
 
+### Event 状态通信的物理边界
+
+Event、Snapshot、node 和 edge 执行共享的最大链路仍是：prepared row -> Batch ->
+dependency read -> model/task -> `StateDelta` -> runtime commit。不可避免的专化只在
+state kind 的 payload 形状和本地 apply：Event 的 `node_memory + mailbox` 必须原子
+读取并分别应用，Snapshot recurrent state 没有 mailbox。owner 路由、collective
+顺序和 detached commit 都继续复用 `StateManager`/`CommScheduler`。
+
+2026-09-23 的 WIKI/TGN trace 表明差距在 state collective 次数，而不是 model
+kernel。尝试用 Torch `cat` 将 owner push 的同 dtype 字段分桶；两 rank 正确性通过，
+但四卡 train-only 中位数从 0.6481 s 退化到 0.6941 s，因此撤回。DGL 没有适合这种
+变长 owner payload 的算子；自定义 C++/CUDA kernel 不引入。后续只能减少不必要的
+协议阶段或复用 Prepare 的静态 Route，不能靠复制 buffer 来换 collective 数量。
+
 ## 与 layerwise 的最小统一
 
 Layerwise embedding 和 historical state 只共用现有的 `Route`、
