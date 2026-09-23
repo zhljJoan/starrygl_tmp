@@ -8741,3 +8741,22 @@ the retained 0.6041/0.6080 s, a 4.4%/3.5% regression. Test AP/AUC was
 cost more than the three removed collective launches; all source, focused test
 and design-note changes were removed. Do not add a custom packing kernel under
 the current kernel constraint. Eight-GPU remains gated.
+
+2026-09-23: Rejected an Event GraphBlock transfer-deduplication candidate from
+the matched CUDA trace. Across four ranks and two epochs, StarryGL issued 4,896
+H2D copies versus MemShare's 1,720; the common GraphBlock move copied identical
+`src_nodes`/`dst_nodes` objects twice and Event blocks also carried an unused
+`edge_index` duplicate of the consumed `row/col` layout. The candidate removes
+that Event-only duplicate and memoizes tensor objects within the existing block
+move. Snapshot/native public layouts, communication, sampling, task/state math,
+and kernels are unchanged. PyTorch object reuse was selected; DGL and a custom
+operator cannot remove redundant host transfer submissions. Modified files:
+`runtime/dataloader/blocks.py`, `runtime/sample/blocks.py`, focused GraphBlock
+assertions, the dataloader contract, and this log. Focused tests passed 76 with
+6 skips and 4 deselections; compile checks passed. The four-A40 epochs 2--10
+median/mean was 0.6266/0.6205 s versus the retained short screen's
+0.5968/0.6040 s. Output:
+`/mnt/nfs/zlj/starrygl_event_block_dedup_screen_4gpu`. Redundant copies were not
+on the critical path and their removal changed asynchronous scheduling enough
+to regress wall time. All source, test and contract changes were removed;
+eight-GPU remains gated.
