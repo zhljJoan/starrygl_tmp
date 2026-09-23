@@ -8671,21 +8671,6 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
-2026-09-23: Started exact MemShare/master owner-route alignment after rejecting
-fixed-capacity UID packets. Source inspection confirmed that MemShare exchanges
-exact `send_sizes/recv_sizes` synchronously, exchanges only actual IDs, gathers
-node feature/memory/mailbox on the owner, then asynchronously sends one
-concatenated response payload for consumption by the pipeline. StarryGL retains
-its exact dynamic UID/EID requests and now directly concatenates homogeneous
-historical memory value/time and mailbox value/time tensors into one floating
-response. This differs from the rejected raw-byte candidate: no uint8 views,
-element-size conversion, or dtype reconstruction is performed. No public API,
-cache/state semantics, loader, process group, DGL path, fallback, or kernel was
-added. Modified files: `runtime/memory/access.py`, one focused test,
-`design/memshare_exact_owner_route.md`, and this log. Focused tests pass 29 with
-8 skips; two-rank Gloo combined/empty routes pass 2 per rank; compile and line
-limits pass. Four-GPU screening is pending; eight-GPU remains gated.
-
 2026-09-23: Rejected exposing the dynamic owner-count exchange as an async
 handle without moving its dependency boundary. The candidate launched the
 fixed-size count all-to-all through the existing `CommScheduler`, immediately
