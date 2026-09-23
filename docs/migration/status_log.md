@@ -8449,3 +8449,18 @@ slower and all production/test changes were removed. Output:
 in `src/starrygl/runtime/state/CONTRACT.md`; remaining work should eliminate a
 protocol phase or consume prepared static routes rather than add copy-based
 packing. Eight-GPU remains gated.
+2026-09-23: A post-gradient-bucket matched train-only Nsight trace confirms the
+bucket reduced NCCL launches from 4,620 to 2,540 and float all-reduce launches
+from 2,160 to 80. Compute remains 60,555 launches / 1.471 s. The remaining
+NCCL work is 1,440 send/recv launches / 0.904 s, 672 all-gather launches /
+0.076 s, and 84 int32 all-reduces / 0.203 s. Profile:
+`/mnt/nfs/zlj/starrygl_profile_postgrad_4gpu_665b6d9/timeline.nsys-rep`.
+The int32 calls are the combined memory/mailbox cache-hit consensus before the
+owner request. Removing that consensus and always entering the owner request
+passed 12 local tests plus two combined-fetch Gloo tests per rank, but its
+gpu06 epochs 2--10 median was 0.6871 s versus the retained full-run median
+0.6699 s (2.6% slower). The wait moved to the following owner collective, so
+the production change was removed. Output:
+`/mnt/nfs/zlj/starrygl_no_probe_screen_4gpu`. This rejects synchronization
+relabeling as a route to parity; owner/shared protocol volume remains the
+target. Eight-GPU remains gated.

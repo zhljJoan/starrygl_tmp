@@ -46,6 +46,21 @@
     "memshare_train_seconds": 0.299692,
     "status": "convergence aligned; four-GPU performance not accepted"
   },
+  "post_gradient_bucket_profile": {
+    "profile": "/mnt/nfs/zlj/starrygl_profile_postgrad_4gpu_665b6d9/timeline.nsys-rep",
+    "compute_launches": 60555,
+    "compute_time_ns": 1470834298,
+    "nccl_launches": 2540,
+    "nccl_time_ns": 1587665267,
+    "nccl_sendrecv_launches": 1440,
+    "nccl_sendrecv_time_ns": 904273646,
+    "nccl_float_allreduce_launches": 80,
+    "nccl_float_allreduce_time_ns": 364073730,
+    "nccl_int32_allreduce_launches": 84,
+    "nccl_int32_allreduce_time_ns": 203167748,
+    "nccl_allgather_launches": 672,
+    "nccl_allgather_time_ns": 75953389
+  },
   "classification": {
     "primary": "latency",
     "secondary": "communication",
