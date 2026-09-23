@@ -8688,3 +8688,18 @@ epochs 2--10 measured median 0.6201 s versus the retained short screen's
 0.5968 s. Output: `/mnt/nfs/zlj/starrygl_capturable_adam_screen_4gpu`. The
 extra GPU update work outweighed removal of host scalar reads, so all source
 and test changes were removed. Eight-GPU remains gated.
+
+2026-09-23: Rejected moving the existing replicated-identity
+feature fast path before generic request compaction. A temporary two-epoch
+Stage-B breakdown measured about 0.24 s/epoch in dependency launch and
+0.15 s/epoch in feature launch despite fully replicated resident WIKI node and
+edge features. The generic fetch still ran `torch.unique` before discovering
+the identity replica. The candidate now directly indexes that replica first;
+requested order and duplicates remain intact, while partitioned/non-identity
+reads are unchanged. No API, cache, route, DGL path, or kernel was added.
+Focused feature/exchange tests passed 25 with 1 skip, but four-A40 epochs 2--10
+measured median 0.6352 s versus the retained short screen's 0.5968 s. Output:
+`/mnt/nfs/zlj/starrygl_replica_precompact_screen_4gpu`. The apparent feature
+launch cost was deferred GPU work settling at compaction; removing the boundary
+worsened scheduling. All source/test changes were removed. Eight-GPU remains
+gated.
