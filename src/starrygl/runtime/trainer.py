@@ -112,9 +112,6 @@ class Trainer(TrainerOptions):
                 node_feat=graph_data.node_feat,
                 edge_feat=graph_data.edge_feat,
                 include_static_one_hop=include_one_hop,
-                replicate_node_features=bool(
-                    self.preprocess_config.get("replicate_node_features", False)
-                ),
             )
             label_shards = build_label_shards(
                 prepared=prepared,
@@ -211,20 +208,19 @@ class Trainer(TrainerOptions):
         partition_inputs = (node_master, edge_master, hot_node_ids)
         if node_to_chunk is not None:
             partition_inputs += (node_to_chunk,)
-        signature = {
-            "format": PREPARE_FORMAT,
-            "data": data,
-            "prepare": prepare,
-            "view": self.plan.view.as_dict(),
-            "task": self.task.get("name"),
-            "temporal": self.spec.temporal,
-            "partition_inputs": partition_inputs,
-            "feature_layout": str(self.preprocess_config.get("feature_layout", "separate")),
-            "include_static_one_hop": bool(include_static_one_hop),
-        }
-        if self.preprocess_config.get("replicate_node_features", False):
-            signature["replicate_node_features"] = True
-        return artifact_fingerprint(signature)
+        return artifact_fingerprint(
+            {
+                "format": PREPARE_FORMAT,
+                "data": data,
+                "prepare": prepare,
+                "view": self.plan.view.as_dict(),
+                "task": self.task.get("name"),
+                "temporal": self.spec.temporal,
+                "partition_inputs": partition_inputs,
+                "feature_layout": str(self.preprocess_config.get("feature_layout", "separate")),
+                "include_static_one_hop": bool(include_static_one_hop),
+            }
+        )
 
     def _validate_artifact_store(self, store) -> None:
         meta = store.graph.prepare.get("meta", {}) if store.graph.prepare is not None else {}

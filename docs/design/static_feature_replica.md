@@ -1,4 +1,4 @@
-# Static feature replica parity step
+# Rejected static node-feature replica parity step
 
 Shared path: prepared Event row -> native sampling -> Batch -> dependency
 access -> model/task -> state update. Static node features specialize only the
@@ -12,7 +12,8 @@ so larger datasets keep partitioned features and their existing `shared_nodes`
 replicas. This reuses Torch indexing and `FeatureManager`; DGL and a custom
 kernel do not apply, and no Python entity loop is added.
 
-Acceptance requires unchanged TGN convergence and a four-GPU train-only gain.
-If full replication is useful but exceeds a later dataset's memory budget, the
-same feature-provider boundary can admit a fixed prepared subset; no second
-loader or model path is needed.
+The 50-epoch result preserved convergence but did not improve train time, so
+the Trainer/config wiring was removed. The existing low-level shard-builder
+capability remains unchanged; no runtime cache or second execution path was
+added. Sampled edge features, not node features, are the next feature-volume
+candidate.

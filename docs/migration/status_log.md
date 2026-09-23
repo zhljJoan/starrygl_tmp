@@ -8554,3 +8554,15 @@ features dominate the file. Outputs:
 this bounded physical option pending a full convergence run and a matched
 collective trace; it does not by itself close the MemShare gap, so eight-GPU
 remains gated.
+
+2026-09-23: The full 50-epoch static node-feature replica validation rejected
+the retained candidate. Warm epochs 2--50 measured median/mean
+0.6757/0.6739 s versus the existing path's 0.6699/0.6740 s. Test AP/AUC was
+0.969087/0.964200 versus the retained 0.968444/0.963175, so convergence stayed
+aligned but performance did not improve. The short-screen median gain was
+noise. Trainer/config/test wiring was removed; the pre-existing low-level
+shard builder remains unchanged. Output:
+`/mnt/nfs/zlj/starrygl_static_feature_replica_convergence_4gpu`. This proves
+the node-feature request phase is not wall-critical; the next complete-phase
+candidate is sampled edge-feature access, whose 172-wide payload dominates
+the feature artifacts. Eight-GPU remains gated.
