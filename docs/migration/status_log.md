@@ -8776,6 +8776,23 @@ on the critical path and their removal changed asynchronous scheduling enough
 to regress wall time. All source, test and contract changes were removed;
 eight-GPU remains gated.
 
+2026-09-23: Rejected moving the complete exact owner-route launch across local
+encode on the shared communicator. The candidate released ready batch `k`,
+allowed Stage B to run exact count/request/owner gather/response launch for
+`k+1` during local encode, and waited before endpoint communication; encode
+paths with their own collectives retained the pre-encode wait. This matched
+MemShare's logical trigger without adding a process group or exposing the
+loader to models. Focused tests passed 48 with 12 skips and ordering tests were
+stable across three runs. Four-A40 smoke and 10-epoch runs completed without
+deadlock; the short warm median/mean was 0.6009/0.5991 s. The required 50-epoch
+run measured warm median/mean 0.6272/0.6290 s versus retained
+0.6041/0.6080 s, a 3.8%/3.5% regression. Test AP/AUC was
+0.970355/0.965604, so convergence remained aligned. Output:
+`/mnt/nfs/zlj/starrygl_exact_route_overlap_convergence_4gpu`. Shared-communicator
+NCCL work contended with current GPU kernels; MemShare also relies on its
+dedicated memory communicator and model-internal trigger. All source, test and
+contract changes were reverted. Eight-GPU remains gated.
+
 2026-09-23: Rejected direct homogeneous floating response packing after
 inspecting MemShare/master's exact route. MemShare synchronously exchanges
 exact counts and actual UID/EID requests, then concatenates owner-local node
