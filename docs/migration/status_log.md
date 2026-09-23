@@ -8776,6 +8776,23 @@ on the critical path and their removal changed asynchronous scheduling enough
 to regress wall time. All source, test and contract changes were removed;
 eight-GPU remains gated.
 
+2026-09-23: Rejected direct homogeneous floating response packing after
+inspecting MemShare/master's exact route. MemShare synchronously exchanges
+exact counts and actual UID/EID requests, then concatenates owner-local node
+feature/memory/mailbox data and launches one asynchronous response for the
+next pipeline slot. The candidate retained StarryGL's exact request route and
+combined memory value/time and mailbox value/time with direct float `cat` and
+views, avoiding the earlier raw-byte conversion. Focused tests passed 29 with
+8 skips; two-rank Gloo combined/empty routes passed 2 per rank; a four-A40
+smoke completed without deadlock. The 10-epoch screen measured epochs 2--10
+median/mean 0.6370/0.6361 s versus the retained 0.5968/0.6040 s. Output:
+`/mnt/nfs/zlj/starrygl_memshare_float_pack_screen_4gpu`. The exposed concat
+copy outweighed fewer response launches because the complete route/gather/send
+phase was not moved into the lookahead slot. All source, test and design-note
+changes were reverted. Future alignment must move the complete exact route
+lifecycle through the existing loader queue rather than locally packing state
+fields. Eight-GPU remains gated.
+
 2026-09-23: Rejected the fixed UID request packet candidate. It used one
 equal-split all-to-all row per owner containing `[count, UIDs, padding]`, so
 node feature and state/mailbox requests removed the separate dynamic count
