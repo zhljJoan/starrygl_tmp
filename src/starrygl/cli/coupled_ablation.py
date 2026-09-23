@@ -316,7 +316,8 @@ def main(argv=None):
         get_layerwise_profile(reset=True)
         start = synchronized_start(device, comm)
         train = run_epoch(**common, state_manager=managers, training=True, split="train", optimizer=optimizer,
-                          generator=torch.Generator().manual_seed(args.seed * 10000 + epoch))
+                          generator=torch.Generator().manual_seed(args.seed * 10000 + epoch),
+                          compute_metrics=bool(trainer.runtime_config.get("train_compute_metrics", True)))
         elapsed = elapsed_rankmax(start, device, comm)
         cumulative_train += elapsed
         row = {"epoch": epoch, "train_mse": train.loss, "train_steps": train.steps,

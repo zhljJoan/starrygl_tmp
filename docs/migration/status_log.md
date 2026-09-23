@@ -8391,3 +8391,16 @@ measurement bounds framework gradient synchronization to a few percent; the
 remaining search is the existing TGN model/materialization path, without a new
 kernel. Output: `/mnt/nfs/zlj/starrygl_parity_4gpu_92dbbf9`. Eight-GPU remains
 gated until the four-GPU hot path meets the acceptance threshold.
+2026-09-23: Corrected the preceding timing-boundary claim: the experiment CLI
+called `run_epoch` directly and did not forward the existing
+`train_compute_metrics` setting, so the `92dbbf9` run still computed training
+AP/AUC. The one-line call-site fix now forwards that setting; no runtime, model,
+cache, sampler, or native path changed. Focused CLI coverage verifies that train
+metrics are empty while validation/test metrics remain available:
+`python -m pytest tests/test_experiment_cli.py -q` (2 passed, 1 skipped).
+Nsight Systems evidence from the pre-fix two-epoch run contains 73,142 GPU
+kernel launches and 3.391 s aggregate GPU kernel time across four ranks; NCCL
+accounts for 4,620 launches and 1.880 s (55.4%). CUDA API totals include 68,522
+`cudaLaunchKernel` calls. This classifies the remaining path as communication /
+launch-latency dominated, not compute dominated. The next clean four-GPU run is
+required before accepting or rejecting the metric-boundary change.

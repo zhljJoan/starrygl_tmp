@@ -30,7 +30,7 @@ def test_config_experiment_records_quality_and_workload(tmp_path, monkeypatch, m
         "backbone": {"name": model, "in_dim": 2, "hidden_dim": 2, "out_dim": 1,
                      "num_layers": 2, "spatial_aggregation": "full_neighbor" if snapshot else "sampled_neighbor"},
         "task": {"name": "node_regression" if snapshot else "edge_prediction"},
-        "runtime": {"temporal_state": {"consistency": "exact"},
+        "runtime": {"temporal_state": {"consistency": "exact"}, "train_compute_metrics": False,
             "sampling": {"mode": "full" if snapshot else "neighbor",
                 "window": {"policy": "full_snapshot" if snapshot else "event_window",
                            "num_full_snapshots": 3 if snapshot else 1},
@@ -52,6 +52,7 @@ def test_config_experiment_records_quality_and_workload(tmp_path, monkeypatch, m
     assert result["workload"]["train_prepared_targets"] > 0
     assert result["test_loss"] >= 0 and result["best_epoch"] == 1
     assert epoch["train_seconds"] > 0 and epoch["train_targets_per_second"] > 0
+    assert epoch["train_metrics"] == {}
     if not snapshot:
         assert "ap" in result["test_metrics"] and "train_mse" not in epoch
     repeated = tmp_path / "repeated"

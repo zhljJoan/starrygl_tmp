@@ -1,0 +1,25 @@
+{
+  "benchmark": "starrygl_wiki_tgn_historical_4gpu_pre_metric_fix",
+  "hardware": "4x NVIDIA A40 on gpu06",
+  "profile": "/mnt/nfs/zlj/starrygl_profile_4gpu_2f058a8/timeline.nsys-rep",
+  "epochs": 2,
+  "gpu_kernel": {
+    "launches": 73142,
+    "total_time_ns": 3390787338,
+    "nccl_launches": 4620,
+    "nccl_time_ns": 1880185012,
+    "nccl_time_fraction": 0.5545
+  },
+  "cuda_api": {
+    "cudaLaunchKernel_calls": 68522,
+    "cudaLaunchKernel_total_time_ns": 1769217256,
+    "cudaMemcpyAsync_calls": 13656,
+    "cudaMemcpyAsync_total_time_ns": 2239613568
+  },
+  "classification": {
+    "primary": "latency",
+    "secondary": "communication",
+    "evidence": "High launch count and NCCL consuming 55.4% of aggregate GPU kernel time.",
+    "limits": "Timeline covers train and evaluation and predates the train-metric forwarding fix; occupancy and throughput counters were not collected."
+  }
+}
