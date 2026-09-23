@@ -77,7 +77,6 @@ class DataLoader:
         self.comm = comm
         self.device = None if device is None else torch.device(device)
         self.prefetch_state = prefetch_state
-        self._prefetch_wait: Callable[[], None] | None = None
         self.enabled = bool(enabled)
         self.skip = max(0, int(skip))
         self.maximum = max(0, int(maximum))
@@ -202,12 +201,16 @@ class DataLoader:
                     raise item
                 consumed += 1
                 ready_slot.release()
-                self._prefetch_wait = lambda current=consumed: _wait_for_launch(
-                    changed, progress, current,
-                )
+                with changed:
+                    changed.wait_for(
+                        lambda: progress["launched"] > consumed
+                        or progress["done"]
+                    )
+                    error = progress["error"]
+                if error is not None:
+                    raise error
                 yield self._wait_ready(item)
         finally:
-            self._prefetch_wait = None
             stop.set()
             request_slot.release()
             ready_slot.release()
@@ -220,12 +223,6 @@ class DataLoader:
                     pass
             for worker in workers:
                 worker.join()
-
-    def wait_prefetch_launch(self) -> None:
-        """Order the next dependency launch before model communication."""
-
-        if self._prefetch_wait is not None:
-            self._prefetch_wait()
 
     def _accessed(self) -> Iterable[AccessedWindow]:
         windows: Iterable[WindowInput] = (
@@ -416,15 +413,6 @@ def _get(queue: Queue, stop: Event) -> Any:
         except Empty:
             pass
     raise RuntimeError("DataLoader stopped before the pipeline drained")
-
-
-def _wait_for_launch(changed: Condition, progress: dict[str, Any], consumed: int) -> None:
-    with changed:
-        changed.wait_for(
-            lambda: progress["launched"] > consumed or progress["done"],
-        )
-        if progress["error"] is not None:
-            raise progress["error"]
 
 
 def _normalize_chunk_decay(

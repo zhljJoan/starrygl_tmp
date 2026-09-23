@@ -174,7 +174,6 @@ def run_epoch(
             pending = submit_hydrate_state(batch, active_state_manager)
             batch = finish_hydrate_state(batch, pending)
         if _skip_empty_batch(batch) and not force_empty_step:
-            batches.wait_prefetch_launch()
             if should_commit_state:
                 launch_state_update(active_state_manager, None)
             continue
@@ -184,9 +183,6 @@ def run_epoch(
             batch_callback(batch)
         if training and optimizer is not None:
             optimizer.zero_grad(set_to_none=True)
-        wait_before_encode = _model_encode_uses_comm(model)
-        if wait_before_encode:
-            batches.wait_prefetch_launch()
         with torch.set_grad_enabled(training):
             with eval_autocast(device, options):
                 output = encode_model(
@@ -195,8 +191,6 @@ def run_epoch(
                     persist_state=False if batch_local_state else None,
                     comm=scheduler,
                 )
-            if not wait_before_encode:
-                batches.wait_prefetch_launch()
             output = materialize_endpoint_output(model, batch, output, comm=scheduler)
             if output_callback is not None:
                 output_callback(output)
@@ -264,15 +258,6 @@ def _skip_empty_batch(batch) -> bool:
         and not needs_empty_state_encode(batch)
         and not (batch.mode == "snapshot" and batch.state)
     )
-
-
-def _model_encode_uses_comm(model: StarryModel) -> bool:
-    cell = getattr(model, "runtime_cell", None)
-    if cell is None or bool(getattr(cell, "reads_neighbor_state", False)):
-        return False
-    return str(getattr(cell, "state_kind", "")) == "model_recurrent" or int(
-        getattr(cell, "num_gcn_layers", 1)
-    ) > 1
 
 
 def _prepared_supervision_schedule(
