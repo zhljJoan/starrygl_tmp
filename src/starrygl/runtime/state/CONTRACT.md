@@ -159,6 +159,11 @@ timestamp、mail 和 mail timestamp，并用 presence mask 覆盖不对齐 node 
 了 collective 减少：四卡 train-only 中位数 0.6761 s，未优于 0.6699 s 基线，故
 撤回。Snapshot/recurrent 无 mailbox，始终继续走原 StateManager 路径。
 
+针对 TGN/JODIE/APAN 对齐写入的直接 `cat(memory, memory_ts, mail, mail_ts)` 也已
+测试。它无需 union、presence mask 或排序，只走一条 owner route；但四卡
+train-only 中位数为 0.7043 s，同样慢于 0.6699 s 基线，因此撤回。Snapshot 和无
+mailbox state 始终复用原 StateManager 路径。
+
 ## 与 layerwise 的最小统一
 
 Layerwise embedding 和 historical state 只共用现有的 `Route`、

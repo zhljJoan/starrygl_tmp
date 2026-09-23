@@ -8480,3 +8480,17 @@ and test changes were removed. Output:
 `/mnt/nfs/zlj/starrygl_atomic_owner_screen_4gpu`. The design result remains in
 `src/starrygl/runtime/state/CONTRACT.md`; no convergence run or eight-GPU arm is
 warranted for this candidate.
+2026-09-23: Rejected the lower-overhead aligned atomic-commit variant. Direct
+StarryGL TGN/JODIE/APAN memory and mailbox writes share one state-write mask,
+so the candidate directly concatenated memory/value timestamps and mailbox/
+timestamps without union, sorting or presence masks, then used one owner route.
+The same 34 local tests with 5 skips and two Gloo checks per rank passed. The
+gpu06 four-A40 epochs 2--10 median was 0.7043 s, again slower than the retained
+0.6699 s full-run median. Output:
+`/mnt/nfs/zlj/starrygl_direct_atomic_owner_screen_4gpu`. All implementation and
+test changes were removed. Together with the generic and union candidates,
+this shows payload packing is not the parity lever; MemShare historical omits
+StarryGL's per-window authoritative memory commit, so its communication volume
+is not semantically equivalent. The next measurement must quantify that
+semantic lower bound rather than add another packing path. Eight-GPU remains
+gated.
