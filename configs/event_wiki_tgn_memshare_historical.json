@@ -44,7 +44,7 @@
         "fanouts": [20],
         "policy": "recent",
         "workers": 32,
-        "boundary_sampling": {"enabled": true, "probability": 0.1}
+        "boundary_sampling": {"enabled": true, "probability": 1.0}
       }
     },
     "preprocess": {

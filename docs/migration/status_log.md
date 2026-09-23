@@ -8354,8 +8354,14 @@ conclusion is retained from that run. Added the narrow experiment-only
 `--target-batch-size` override so one model/config can use 12000 on four ranks
 and 24000 on eight ranks; the canonical runtime and hot path are unchanged.
 Modified `src/starrygl/cli/coupled_ablation.py` and
-`tests/test_experiment_cli.py`; the focused config experiment test passed twice.
+ `tests/test_experiment_cli.py`; the focused config experiment test passed twice.
 The corrected launches explicitly pass `--lr 0.0004`.
+
+The first completed 10-window comparison above still inherited boundary sample
+probability 0.1 from the GDELT template, while the MemShare command used 1.0.
+Its convergence evidence is useful, but it is not the final strategy-matched
+performance result. The WIKI config now fixes probability at 1.0; four-GPU is
+rerun before enabling the eight-GPU arm.
 2026-09-23: Completed the corrected 4-A40 WIKI/TGN-large historical comparison
 at seed 6773 and 50 epochs. Both paths used 10 train windows per epoch,
 100-dimensional learned node features, 172-dimensional edge features, fanout
