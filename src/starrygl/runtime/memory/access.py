@@ -30,7 +30,6 @@ class PendingMemoryMailboxRead:
     scheduler: Any | None = None
     remote_inverse: Tensor | None = None
     memory_metadata: dict[str, Tensor] = field(default_factory=dict)
-    response_specs: dict[str, tuple[torch.dtype, torch.Size]] = field(default_factory=dict)
 
 
 def materialize_local_pair(runtime, node_ids: Tensor):
@@ -112,16 +111,11 @@ def _submit_remote_pair(runtime, nodes: Tensor, node_access) -> PendingMemoryMai
         responses[f"{prefix}_values"] = read.values
         if read.timestamps is not None:
             responses[f"{prefix}_timestamps"] = read.timestamps
-    packed, response_specs = _pack_responses(responses)
-    handles = submit_owner_responses(
-        request,
-        {"packed": packed},
-        name=f"state_mailbox_response:{runtime.kind}",
-    )
+    handles = submit_owner_responses(request, responses, name=f"state_mailbox_response:{runtime.kind}")
     return PendingMemoryMailboxRead(
         nodes.to(device), outputs=outputs, missing_pos=missing_pos, order=request.order,
         handles=handles, scheduler=request.scheduler, remote_inverse=inverse,
-        memory_metadata=metadata, response_specs=response_specs,
+        memory_metadata=metadata,
     )
 
 
@@ -142,7 +136,6 @@ def finish_pair(runtime, pending: PendingMemoryMailboxRead):
     if pending.scheduler is None or pending.missing_pos is None or pending.order is None:
         raise RuntimeError("pending memory/mailbox read is incomplete")
     received = finish_owner_responses(pending.scheduler, pending.order, pending.handles)
-    received = _unpack_responses(received["packed"], pending.response_specs)
     if pending.remote_inverse is not None:
         received = {name: value.index_select(0, pending.remote_inverse.to(value.device)) for name, value in received.items()}
     for prefix in ("memory", "mailbox"):
@@ -207,38 +200,3 @@ def _copy_read(outputs, prefix: str, read, pos: Tensor) -> None:
         output, value = outputs[f"{prefix}_{name}"], getattr(read, name)
         if output is not None and value is not None:
             output.index_copy_(0, pos.to(output.device), value.to(output))
-
-
-def _pack_responses(
-    responses: dict[str, Tensor],
-) -> tuple[Tensor, dict[str, tuple[torch.dtype, torch.Size]]]:
-    specs = {name: (value.dtype, value.shape) for name, value in responses.items()}
-    rows = next(iter(responses.values())).shape[0]
-    packed = torch.cat(
-        tuple(
-            value.contiguous().view(torch.uint8).reshape(
-                rows, value.shape[1:].numel() * value.element_size()
-            )
-            for value in responses.values()
-        ),
-        dim=1,
-    )
-    return packed, specs
-
-
-def _unpack_responses(
-    packed: Tensor,
-    specs: dict[str, tuple[torch.dtype, torch.Size]],
-) -> dict[str, Tensor]:
-    outputs, offset = {}, 0
-    for name, (dtype, shape) in specs.items():
-        width = shape[1:].numel() * torch.empty((), dtype=dtype).element_size()
-        if packed.shape[0]:
-            value = packed[:, offset : offset + width].reshape(-1).view(dtype).reshape(
-                packed.shape[0], *shape[1:]
-            )
-        else:
-            value = torch.empty((0, *shape[1:]), dtype=dtype, device=packed.device)
-        outputs[name] = value
-        offset += width
-    return outputs

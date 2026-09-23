@@ -8719,7 +8719,7 @@ would require an explicit global cross-group schedule, which is larger than the
 measured opportunity. Keep the existing single-group handshake; eight-GPU remains
 gated.
 
-2026-09-23: Started a combined historical-read response candidate after the
+2026-09-23: Rejected a combined historical-read response candidate after the
 separate-process-group attempt deadlocked. The common runtime spine and its one
 globally ordered communicator remain unchanged. The existing combined TGN
 memory/mailbox hydrate now packs memory value/time and mailbox value/time into
@@ -8733,5 +8733,11 @@ and the status log. Focused tests pass 32 with 7 skips; two-rank Gloo combined
 read checks pass 2 per rank. The four-A40 epochs 2--10 median/mean was
 0.5961/0.5943 s versus the retained short screen's 0.5968/0.6040 s, with 1.82 GB
 peak allocation. Output: `/mnt/nfs/zlj/starrygl_packed_read_screen_4gpu`.
-Retain the screened candidate because it removes three collectives without a
-regression; 50-epoch convergence is pending and eight-GPU remains gated.
+The required 50-epoch run instead measured median/mean 0.6307/0.6296 s versus
+the retained 0.6041/0.6080 s, a 4.4%/3.5% regression. Test AP/AUC was
+0.967688/0.962694 versus the retained 0.969481/0.964472 and MemShare's
+0.967181/0.962900, so convergence remained aligned. Output:
+`/mnt/nfs/zlj/starrygl_packed_read_convergence_4gpu`. Torch pack/unpack copies
+cost more than the three removed collective launches; all source, focused test
+and design-note changes were removed. Do not add a custom packing kernel under
+the current kernel constraint. Eight-GPU remains gated.

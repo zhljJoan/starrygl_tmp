@@ -58,17 +58,3 @@ NCCL/full training. Historical checkpoints containing the old scratch-buffer
 keys will need those obsolete keys removed for strict loading; no broad fallback
 or legacy load hook is added. This change does not establish MemShare numerical
 or performance parity.
-
-## Combined historical read response candidate (2026-09-23)
-
-The common path remains prepared event window -> Batch -> dependency access ->
-model/task -> state update. TGN's unavoidable specialization is a combined
-node-memory/mailbox read, but its four response tensors currently use four
-collectives despite sharing one owner route. Pack their raw bytes into one
-two-dimensional tensor, run the existing owner-response all-to-all once, and
-restore the original dtype and trailing shape before the existing scatter.
-
-This reuses Torch tensor views/concatenation and the existing `CommScheduler`;
-DGL has no state-payload primitive. A custom C++/CUDA pack kernel is deferred
-unless profiling shows Torch packing dominates. No request, cache, freshness,
-negative-sampling, model, task, communication order, or public API changes.
