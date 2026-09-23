@@ -8422,3 +8422,15 @@ public API, or native kernel changed. Local focused tests passed 7 with 1 skip;
 the two-rank missing-gradient Gloo test passed on both ranks. Four-GPU timing
 and convergence remain the acceptance gate before shared-state communication
 is changed.
+2026-09-23: The gradient-bucket validation completed 50 epochs on four A40s.
+Epochs 2--50 have median/mean train time 0.6699/0.6740 s, versus the corrected
+pre-bucket control's 0.6770/0.6798 s (1.05% median, 0.86% mean reduction).
+Test AP/AUC is 0.968444/0.963175, within 0.001263/0.000275 of MemShare/master's
+0.967181/0.962900. The change therefore preserves the matched convergence
+curve but leaves StarryGL 2.24x slower than MemShare's 0.2997 s/epoch. Output:
+`/mnt/nfs/zlj/starrygl_parity_4gpu_1eece2d`. The bucket is retained because it
+removes the confirmed per-parameter collective duplication at the shared
+optimizer boundary without a new API or kernel. Four-GPU performance is not
+accepted and the eight-GPU arm remains gated; the next work is existing
+owner/shared-state communication, which the trace identifies as the dominant
+remaining protocol difference.

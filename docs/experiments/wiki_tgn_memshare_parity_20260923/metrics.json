@@ -32,6 +32,20 @@
       "nccl_time_ns": 1674131807
     }
   },
+  "gradient_bucket_validation": {
+    "commit": "1eece2d",
+    "output": "/mnt/nfs/zlj/starrygl_parity_4gpu_1eece2d",
+    "epochs": 50,
+    "warm_epochs": "2-50",
+    "train_seconds_median": 0.6699191602,
+    "train_seconds_mean": 0.6739543283,
+    "test_ap": 0.9684436321,
+    "test_auc": 0.9631745219,
+    "pre_bucket_train_seconds_median": 0.6770434184,
+    "pre_bucket_train_seconds_mean": 0.6798235794,
+    "memshare_train_seconds": 0.299692,
+    "status": "convergence aligned; four-GPU performance not accepted"
+  },
   "classification": {
     "primary": "latency",
     "secondary": "communication",
