@@ -8521,3 +8521,16 @@ is needed. Output: `/mnt/nfs/zlj/starrygl_real_access_pipeline_screen_4gpu`.
 The existing common loader/prefetch path is retained; this result rejects
 thread/stream prefetch as the current WIKI parity lever. Eight-GPU remains
 gated.
+
+2026-09-23: Rejected an endpoint-route host-transfer micro-optimization. The
+candidate computed endpoint owner `bincount` on GPU and copied only four
+counts to CPU instead of copying the full owner vector before counting. It
+changed one line, introduced no API or kernel, passed 48 local model tests
+(7 skipped) and the two-rank dynamic/prepared endpoint checks (2 per rank).
+The matched gpu06 four-A40 screen produced epochs 2--10 median/mean
+0.6760/0.6691 s versus the retained full-run 0.6699/0.6740 s, so there is no
+repeatable gain and the source change was removed. Output:
+`/mnt/nfs/zlj/starrygl_endpoint_gpu_bincount_screen_4gpu`. Together with the
+rejected payload buckets, this confirms that parity requires eliminating or
+reusing complete request/count/response phases, not packing fields or tuning
+one transfer. Eight-GPU remains gated.
