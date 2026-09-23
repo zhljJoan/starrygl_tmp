@@ -8380,3 +8380,14 @@ while StarryGL sorted positive/negative scores twice per batch inside its train
 timer. The matched configuration now uses the existing
 `train_compute_metrics=false` switch; validation and test metrics remain
 enabled, and model/loss/state math is unchanged.
+2026-09-23: The fully strategy-matched 4-GPU rerun (boundary probability 1.0,
+training metrics excluded like MemShare) completed 50 epochs. StarryGL warm
+median/mean train time was 0.6702/0.6729 s; test AP/AUC was
+0.970220/0.965585. MemShare/master remained 0.2997 s and
+0.967181/0.962900. Convergence is aligned (StarryGL is +0.00304 AP and
++0.00268 AUC), but performance is 2.24x slower. Removing training metric sorts
+did not materially improve time, so that hypothesis is rejected. Prior
+measurement bounds framework gradient synchronization to a few percent; the
+remaining search is the existing TGN model/materialization path, without a new
+kernel. Output: `/mnt/nfs/zlj/starrygl_parity_4gpu_92dbbf9`. Eight-GPU remains
+gated until the four-GPU hot path meets the acceptance threshold.
