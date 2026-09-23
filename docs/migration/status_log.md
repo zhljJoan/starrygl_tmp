@@ -8494,6 +8494,7 @@ StarryGL's per-window authoritative memory commit, so its communication volume
 is not semantically equivalent. The next measurement must quantify that
 semantic lower bound rather than add another packing path. Eight-GPU remains
 gated.
+
 2026-09-23: Two non-mergeable diagnostics quantify the state-semantic lower
 bound. First, disabling only remote owner commit while retaining local owner
 apply and the prepared 10% shared-hot plane produced epochs 2--10 median
@@ -8717,3 +8718,20 @@ removed; no output metrics were produced. Reproducing MemShare's multiple groups
 would require an explicit global cross-group schedule, which is larger than the
 measured opportunity. Keep the existing single-group handshake; eight-GPU remains
 gated.
+
+2026-09-23: Started a combined historical-read response candidate after the
+separate-process-group attempt deadlocked. The common runtime spine and its one
+globally ordered communicator remain unchanged. The existing combined TGN
+memory/mailbox hydrate now packs memory value/time and mailbox value/time into
+one raw-byte tensor because all four fields use the same owner route, replacing
+four response all-to-all calls with one before restoring original dtypes and
+shapes. Requests, bounded-stale reads, state updates, caches, model/task math and
+negative sampling are unchanged. Torch tensor views/cat were selected over DGL
+(no applicable state payload operator) and a custom C++/CUDA kernel. Modified
+files: `runtime/memory/access.py`, one focused packing check, this design note,
+and the status log. Focused tests pass 32 with 7 skips; two-rank Gloo combined
+read checks pass 2 per rank. The four-A40 epochs 2--10 median/mean was
+0.5961/0.5943 s versus the retained short screen's 0.5968/0.6040 s, with 1.82 GB
+peak allocation. Output: `/mnt/nfs/zlj/starrygl_packed_read_screen_4gpu`.
+Retain the screened candidate because it removes three collectives without a
+regression; 50-epoch convergence is pending and eight-GPU remains gated.
