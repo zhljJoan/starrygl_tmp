@@ -103,3 +103,19 @@ Alternatives: torch.tensor -> torch.full alone likely moves waiting to the immed
 Validation: reuse test_empty_supervision_step.py unchanged, first CPU then2-rank Gloo. Tests cover active/all-empty/skewed ownership after task callbacks, exact optimizer parameters/moments, unused gradients, autograd reductions/state commits and collective order/dtypes. Root alone runs NCCL correctness and clean four-GPU baseline/candidate timing. Scope is current diagnostic protocol, not MemShare numerical parity; no acceleration assumed.
 
 2026-09-13 complete/frozen: only runtime/epoch.py differs from frozen device-fix base (2 changed statements,388 lines). CPU test_empty_supervision_step.py:3 passed/9.08s. Two-rank Gloo:3 passed per rank/10.19s; exact optimizer state and parameter comparisons, unused gradients, all-active/all-empty/skewed supervision, unchanged collective order verified. Compile passed. No new test framework; original focused fixture reused unchanged. No GPU performed, gain unresolved. The source remains the pre-math prototype; root may apply only candidate.patch to frozen memshare_wiki_math and preserve both histories.
+
+## Reject capturable native Adam (2026-09-23)
+
+The common path remains Prepare -> task slice -> graph accessor -> Batch ->
+dependency access -> model/task -> backward -> `step_optimizer` -> runtime-owned
+state update. A four-GPU scalar trace attributes 540 of rank0's 692 per-epoch
+`aten::_local_scalar_dense` calls to ten Adam steps. The minimum candidate keeps
+the existing Torch foreach Adam/AdamW and hyperparameters, but selects their
+native `capturable=True` path when model parameters are already on CUDA; CPU
+keeps `capturable=False`. This adds no API, model branch, cache, DGL path, or
+kernel. DGL is unrelated, and custom CUDA is unjustified while the installed
+Torch operator removes the scalar reads. Focused tests passed, but the four-A40
+epochs 2--10 median was 0.6201 s versus the retained short screen's 0.5968 s.
+The capturable update's extra GPU work cost more than the removed host scalar
+reads, so the candidate was removed before convergence testing. Eight-GPU stays
+gated.

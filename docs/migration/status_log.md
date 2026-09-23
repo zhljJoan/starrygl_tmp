@@ -8678,3 +8678,13 @@ versus the retained short screen's 0.5968 s. Output:
 consumer moved their host wait back onto the training critical path; all
 source, test, and contract changes were removed. Keep Stage-B completion and
 its CUDA-event handoff. Eight-GPU remains gated.
+
+2026-09-23: Rejected CUDA-capturable native Adam. A
+temporary rank0 Torch-dispatch trace found 692 scalar reads per epoch, of which
+540 came from ten `optimizer.step()` calls. The shared trainer optimizer and
+the parity CLI temporarily kept Torch foreach Adam/AdamW with
+`capturable=True` for CUDA-resident models. Focused tests passed, but four-A40
+epochs 2--10 measured median 0.6201 s versus the retained short screen's
+0.5968 s. Output: `/mnt/nfs/zlj/starrygl_capturable_adam_screen_4gpu`. The
+extra GPU update work outweighed removal of host scalar reads, so all source
+and test changes were removed. Eight-GPU remains gated.
