@@ -7,6 +7,7 @@ import torch.distributed as dist
 import starrygl as sg
 
 from starrygl.runtime import memory as runtime_memory
+from starrygl.runtime.memory import access as memory_access
 from starrygl.runtime import state as runtime_state
 from starrygl.runtime import train as runtime_train
 from starrygl.runtime.comm import CommScheduler
@@ -365,6 +366,19 @@ def test_trainer_builds_plan_owned_temporal_state_once() -> None:
     assert manager.change_filter.max_skip == 1
     assert manager.freshness_policy == "bounded_stale"
     assert manager.max_staleness == 1
+
+
+def test_memory_mailbox_float_response_pack_preserves_shapes() -> None:
+    responses = {
+        "memory_values": torch.arange(6, dtype=torch.float32).reshape(2, 3),
+        "memory_timestamps": torch.arange(2, dtype=torch.float32),
+        "mailbox_values": torch.arange(8, dtype=torch.float32).reshape(2, 2, 2),
+    }
+
+    packed, shapes = memory_access._pack_float_responses(responses)
+    restored = memory_access._unpack_float_responses(packed, shapes)
+
+    assert all(torch.equal(restored[name], value) for name, value in responses.items())
 
 
 def test_state_owner_rows_do_not_reuse_feature_replicas() -> None:
