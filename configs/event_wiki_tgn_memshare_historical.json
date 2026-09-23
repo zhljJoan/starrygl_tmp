@@ -57,6 +57,7 @@
       "split_ratios": [0.7, 0.15, 0.15]
     },
     "gradient_sync": "ddp",
+    "train_compute_metrics": false,
     "train": {
       "batch_size": 3000,
       "epochs": 50,

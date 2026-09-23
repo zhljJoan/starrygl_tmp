@@ -8374,3 +8374,9 @@ The 8-GPU arm remains gated. Outputs:
 `/mnt/nfs/zlj/memshare_master_historical_4gpu_50ep_20260923` and
 `/mnt/nfs/zlj/starrygl_parity_4gpu_8647265`. External MemShare compatibility
 edits were restored; only its ignored native build directory remains.
+2026-09-23: Profiling the remaining four-GPU timing-boundary difference found
+that MemShare leaves `train_aps` empty and does not compute training AP/AUC,
+while StarryGL sorted positive/negative scores twice per batch inside its train
+timer. The matched configuration now uses the existing
+`train_compute_metrics=false` switch; validation and test metrics remain
+enabled, and model/loss/state math is unchanged.
