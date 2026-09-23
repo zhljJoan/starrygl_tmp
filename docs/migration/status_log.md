@@ -8593,3 +8593,16 @@ capacity-selected option rather than the universal default. CUDA memcpy API
 time remains 1.795 s for 12,480 calls versus MemShare's 0.710 s for 12,548,
 so the next step is existing GPU feature residency, not another payload pack.
 Four-GPU performance remains 2.10x MemShare and eight-GPU remains gated.
+
+2026-09-23: Enabled the existing `feature_device=cuda` policy for the WIKI
+edge-replica candidate, moving immutable feature tensors and row maps once
+before the epoch instead of repeating pageable CPU-to-GPU materialization.
+The option reuses `FeatureManager.to()` and changes no model, route, cache API,
+or kernel. The config/CLI checks passed 43 with 1 skip; the same combined run
+again exposed the unrelated paper-config `local` versus `shared_hot` failure.
+The four-A40 10-epoch screen measured warm median/mean 0.6211/0.6193 s versus
+the edge-replica-only 0.6636/0.6585 s, while peak allocated memory rose from
+about 1.69 GB to 1.82 GB per rank. Output:
+`/mnt/nfs/zlj/starrygl_edge_replica_gpu_resident_screen_4gpu`. Retain as a
+screened capacity-selected candidate pending full convergence and trace
+validation; eight-GPU remains gated.

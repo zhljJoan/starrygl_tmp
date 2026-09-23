@@ -57,6 +57,7 @@
       "target_batch_size": 3000,
       "split_ratios": [0.7, 0.15, 0.15]
     },
+    "feature_device": "cuda",
     "gradient_sync": "ddp",
     "train_compute_metrics": false,
     "train": {
