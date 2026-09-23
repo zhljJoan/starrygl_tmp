@@ -153,6 +153,12 @@ kernel。尝试用 Torch `cat` 将 owner push 的同 dtype 字段分桶；两 ra
 变长 owner payload 的算子；自定义 C++/CUDA kernel 不引入。后续只能减少不必要的
 协议阶段或复用 Prepare 的静态 Route，不能靠复制 buffer 来换 collective 数量。
 
+随后测试的原子 owner commit 用一个 union node route 携带 memory、memory
+timestamp、mail 和 mail timestamp，并用 presence mask 覆盖不对齐 node 集。它
+消除了第二次动态 route/count 和重复 node payload，但构造 474 维 packet 的成本抵消
+了 collective 减少：四卡 train-only 中位数 0.6761 s，未优于 0.6699 s 基线，故
+撤回。Snapshot/recurrent 无 mailbox，始终继续走原 StateManager 路径。
+
 ## 与 layerwise 的最小统一
 
 Layerwise embedding 和 historical state 只共用现有的 `Route`、

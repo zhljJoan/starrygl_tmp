@@ -8464,3 +8464,19 @@ the production change was removed. Output:
 `/mnt/nfs/zlj/starrygl_no_probe_screen_4gpu`. This rejects synchronization
 relabeling as a route to parity; owner/shared protocol volume remains the
 target. Eight-GPU remains gated.
+2026-09-23: Rejected an atomic memory/mailbox owner-commit candidate derived
+from MemShare's packed memory payload, while retaining StarryGL owner authority.
+One union-node route carried memory, memory timestamp, mail, mail timestamp and
+two presence masks, then reused the existing local owner apply functions. This
+removed the second dynamic route/count exchange and duplicate node payload;
+unaligned node sets and empty ranks retained one global collective order.
+Torch operators were used; DGL has no owner-state push primitive and no custom
+kernel was introduced. Local memory/store/TGN tests passed 34 with 5 skips;
+two-rank Gloo owner/mailbox and empty-route checks passed 2 per rank. The gpu06
+four-A40 10-epoch train-only screen produced epochs 2--10 median 0.6761 s,
+slightly slower than the retained full-run median 0.6699 s. Union construction
+and the 474-wide packet offset the collective reduction, so all implementation
+and test changes were removed. Output:
+`/mnt/nfs/zlj/starrygl_atomic_owner_screen_4gpu`. The design result remains in
+`src/starrygl/runtime/state/CONTRACT.md`; no convergence run or eight-GPU arm is
+warranted for this candidate.
