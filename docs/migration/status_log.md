@@ -8703,3 +8703,17 @@ measured median 0.6352 s versus the retained short screen's 0.5968 s. Output:
 launch cost was deferred GPU work settling at compaction; removing the boundary
 worsened scheduling. All source/test changes were removed. Eight-GPU remains
 gated.
+
+2026-09-23: Rejected an isolated dependency-collective candidate for the measured
+Stage-B/Stage-A ordering wait. It reused `torch.distributed.new_group()` for
+feature and bounded-historical state reads while leaving endpoint, gradient and
+state-update collectives on the original group; the depth-one queue and each
+group's local order were preserved. Focused tests passed 32 with 7 skips and
+compile checks passed. On four A40s, however, all GPUs stayed at 100% utilization
+for more than 50 seconds without completing epoch 1. Concurrent Stage-B and
+Stage-A launches reached the two NCCL groups in an incompatible cross-group
+order. The run was terminated and all source, test and contract changes were
+removed; no output metrics were produced. Reproducing MemShare's multiple groups
+would require an explicit global cross-group schedule, which is larger than the
+measured opportunity. Keep the existing single-group handshake; eight-GPU remains
+gated.
