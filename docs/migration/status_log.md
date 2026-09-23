@@ -8494,3 +8494,20 @@ StarryGL's per-window authoritative memory commit, so its communication volume
 is not semantically equivalent. The next measurement must quantify that
 semantic lower bound rather than add another packing path. Eight-GPU remains
 gated.
+2026-09-23: Two non-mergeable diagnostics quantify the state-semantic lower
+bound. First, disabling only remote owner commit while retaining local owner
+apply and the prepared 10% shared-hot plane produced epochs 2--10 median
+0.6788 s, so async owner commit is not on the dominant wall path. Second,
+replicating a stale cache for all 9,228 WIKI nodes and also disabling remote
+owner commit avoided normal owner hydrate, but reached only 0.6408 s (4.3%
+below the retained 0.6699 s, still 2.14x MemShare's 0.2997 s). Outputs:
+`/mnt/nfs/zlj/starrygl_no_remote_owner_diagnostic_4gpu` and
+`/mnt/nfs/zlj/starrygl_full_stale_cache_diagnostic_4gpu`. Both violate the
+authoritative per-window owner contract; full replication also has unacceptable
+large-graph GPU capacity scaling. Both source changes were restored and neither
+is a candidate. Post-bucket CUDA API evidence points to serialization/host
+launch instead: StarryGL and MemShare have similar memcpy call counts
+(13,040 versus 12,548), but aggregate `cudaMemcpyAsync` API time is 2.115 s
+versus 0.710 s. The next parity work must inspect buffer/device transfers and
+the common materialize/communication schedule, not add another state-cache or
+packing variant. Eight-GPU remains gated.
