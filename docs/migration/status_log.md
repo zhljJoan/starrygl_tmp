@@ -8658,3 +8658,14 @@ median was about 0.6258 s versus the retained 0.6041 s full-run median. Output:
 or pipeline switch remains in production. The next candidate should reuse
 prepared event endpoint/update rows rather than add another communication or
 cache path; eight-GPU remains gated.
+
+2026-09-23: Rejected removal of TGN's runtime state-write deduplication. The
+candidate trusted Prepare's last-write mask and retained vectorized self-loop
+folding, deleting the second GPU `unique`; focused TGN tests passed 4. On
+gpu06, however, epochs 2--10 measured median/mean 0.6191/0.6261 s versus the
+retained short screen's 0.5968/0.6040 s. Output:
+`/mnt/nfs/zlj/starrygl_prepared_state_rows_screen_4gpu`. The profile's apparent
+state-update cost was chiefly deferred GPU work settling at a synchronizing
+operation, not removable deduplication wall time. All source/test changes were
+removed. Further work must reduce synchronization boundaries themselves;
+eight-GPU remains gated.
