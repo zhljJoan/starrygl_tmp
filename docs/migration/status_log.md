@@ -8669,3 +8669,12 @@ state-update cost was chiefly deferred GPU work settling at a synchronizing
 operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
+
+2026-09-23: Rejected moving the existing access pipeline's dependency finish
+from Stage B to the consumer after the next launch. Focused dataloader/runtime
+tests passed 20 with 3 skips, but the four-A40 epochs 2--10 median was 0.6329 s
+versus the retained short screen's 0.5968 s. Output:
+`/mnt/nfs/zlj/starrygl_consumer_finish_screen_4gpu`. Completing handles in the
+consumer moved their host wait back onto the training critical path; all
+source, test, and contract changes were removed. Keep Stage-B completion and
+its CUDA-event handoff. Eight-GPU remains gated.
