@@ -8356,3 +8356,15 @@ and 24000 on eight ranks; the canonical runtime and hot path are unchanged.
 Modified `src/starrygl/cli/coupled_ablation.py` and
 `tests/test_experiment_cli.py`; the focused config experiment test passed twice.
 The corrected launches explicitly pass `--lr 0.0004`.
+2026-09-23: Completed the corrected 4-A40 WIKI/TGN-large historical comparison
+at seed 6773 and 50 epochs. Both paths used 10 train windows per epoch,
+100-dimensional learned node features, 172-dimensional edge features, fanout
+20, per-rank batch 3000 (global 12000), Adam 4e-4, and the historical 0.3
+filter/gamma policy. MemShare/master warm average train time was 0.2997 s with
+test AP/AUC 0.967181/0.962900. StarryGL warm median was 0.6207 s with test
+AP/AUC 0.966359/0.960845. AP/AUC gaps are 0.000822/0.002055, so convergence is
+aligned; StarryGL remains 2.07x slower and 4-GPU performance is not accepted.
+The 8-GPU arm remains gated. Outputs:
+`/mnt/nfs/zlj/memshare_master_historical_4gpu_50ep_20260923` and
+`/mnt/nfs/zlj/starrygl_parity_4gpu_8647265`. External MemShare compatibility
+edits were restored; only its ignored native build directory remains.
