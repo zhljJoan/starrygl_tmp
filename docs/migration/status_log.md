@@ -8760,18 +8760,3 @@ median/mean was 0.6266/0.6205 s versus the retained short screen's
 on the critical path and their removal changed asynchronous scheduling enough
 to regress wall time. All source, test and contract changes were removed;
 eight-GPU remains gated.
-
-2026-09-23: Began the UID/EID dependency-route migration without changing the
-retained training path. `OwnerRequest` now has a two-step launch/finish form:
-owner order and counts are computed once, the fixed-size count all-to-all is
-launched through the existing `CommScheduler`, and its handle is finished only
-before the variable-size ID exchange. The old `submit_owner_request` remains a
-thin blocking composition, so model math, caches, state updates and collective
-order are unchanged in this unit. `OwnerRequest` also records the exact request
-IDs needed to validate future feature/state route reuse. PyTorch collectives
-were selected; DGL has no route-count primitive and a custom C++/CUDA operator
-cannot remove the network dependency. Modified files: `store/remote_fetch.py`,
-one focused test, `design/dependency_route_pipeline.md`, and this log. Focused
-feature/memory tests pass 20 with 6 skips; compile and diff checks pass. No
-performance claim is made until the handle is moved one loader slot ahead and
-the four-GPU trace passes; eight-GPU remains gated.
