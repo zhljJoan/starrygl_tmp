@@ -8671,6 +8671,21 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
+2026-09-23: Rejected exposing the dynamic owner-count exchange as an async
+handle without moving its dependency boundary. The candidate launched the
+fixed-size count all-to-all through the existing `CommScheduler`, immediately
+finished it before the variable-size UID exchange, and otherwise preserved the
+owner request/response path. Focused feature/memory tests passed 31 with 8
+skips, compile and diff checks passed, and a real four-A40 two-epoch smoke
+completed without deadlock. The required 10-epoch screen measured epochs 2--10
+median/mean 0.6252/0.6202 s versus the retained 0.5968/0.6040 s. Output:
+`/mnt/nfs/zlj/starrygl_uid_count_handle_screen_4gpu`. `async_op=True` created no
+overlap because variable receive splits still require the completed counts; it
+only added handle and device-to-host completion overhead. All source, test and
+design-note changes were reverted. A future candidate must remove a collective
+phase (combined UID/EID request packet or prepared fixed route), not wrap the
+same blocking boundary. Eight-GPU remains gated.
+
 2026-09-23: Rejected moving the existing access pipeline's dependency finish
 from Stage B to the consumer after the next launch. Focused dataloader/runtime
 tests passed 20 with 3 skips, but the four-A40 epochs 2--10 median was 0.6329 s
