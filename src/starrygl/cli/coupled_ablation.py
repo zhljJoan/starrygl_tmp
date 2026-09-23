@@ -136,6 +136,7 @@ def main(argv=None):
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--eval-every", type=int, default=10)
     parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--target-batch-size", type=int)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--prepare-only", action="store_true")
     args = parser.parse_args(argv)
@@ -149,6 +150,8 @@ def main(argv=None):
         parser.error("hot-ratio must be in [0,1]")
     if not 0 <= args.alpha <= 2 or not torch.isfinite(torch.tensor(args.gamma_boundary_init)):
         parser.error("alpha must be in [0,2] and gamma-init must be finite")
+    if args.target_batch_size is not None and args.target_batch_size < 1:
+        parser.error("target-batch-size must be positive")
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed)
@@ -179,9 +182,16 @@ def main(argv=None):
                     "preprocess": {"num_parts": world, "chunks_per_rank": 1, "hot_node_ratio": args.hot_ratio,
                                    "split_ratios": [0.4, 0.2, 0.4], "include_static_one_hop": True}},
     }
-    trainer = sg.from_config(args.config) if args.config else sg.compile(**config)
     if args.config:
         config = json.loads(args.config.read_text())
+        if args.target_batch_size is not None:
+            config.setdefault("runtime", {}).setdefault("preprocess", {})[
+                "target_batch_size"
+            ] = args.target_batch_size
+        trainer = sg.from_config(config)
+    else:
+        trainer = sg.compile(**config)
+    if args.config:
         args.model = trainer.model_config["name"]
         args.num_full_snapshots = trainer._num_full_snapshots(None)
         temporal_state = trainer.runtime_config.get("temporal_state", {"consistency": "exact"})

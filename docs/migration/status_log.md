@@ -8345,3 +8345,14 @@ input mismatch without adding a loader branch. Added
 The broader paper/default tests still have pre-existing cache-policy/default
 documentation failures unrelated to this change. Native sampler and runtime
 hot paths are unchanged.
+2026-09-23: Rejected the first 4-GPU matched attempt after seven epochs: it
+materialized 37 train windows because StarryGL treated 3000 as the global
+window, whereas MemShare multiplies its 3000 per-rank batch by world size
+(about 10 windows on four ranks). It also inherited the experiment CLI's
+0.001 learning-rate default instead of the matched 0.0004. No performance
+conclusion is retained from that run. Added the narrow experiment-only
+`--target-batch-size` override so one model/config can use 12000 on four ranks
+and 24000 on eight ranks; the canonical runtime and hot path are unchanged.
+Modified `src/starrygl/cli/coupled_ablation.py` and
+`tests/test_experiment_cli.py`; the focused config experiment test passed twice.
+The corrected launches explicitly pass `--lr 0.0004`.
