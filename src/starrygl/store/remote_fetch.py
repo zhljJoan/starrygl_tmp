@@ -17,11 +17,22 @@ from starrygl.utils.route import dist_part
 
 @dataclass(frozen=True)
 class OwnerRequest:
+    node_ids: Tensor
     order: Tensor
     send_counts: Tensor
     recv_counts: Tensor
     recv_nodes: Tensor
     scheduler: CommScheduler
+
+
+@dataclass(frozen=True)
+class PendingOwnerRequest:
+    node_ids: Tensor
+    order: Tensor
+    send_counts: Tensor
+    count_handle: Any
+    scheduler: CommScheduler
+    name: str
 
 
 @dataclass(frozen=True)
@@ -50,13 +61,62 @@ def submit_owner_request(
     order: Tensor | None = None,
     send_counts: Tensor | None = None,
 ) -> OwnerRequest:
+    return finish_owner_request(launch_owner_request(
+        node_ids,
+        dist_index,
+        scheduler=scheduler,
+        name=name,
+        order=order,
+        send_counts=send_counts,
+    ))
+
+
+def launch_owner_request(
+    node_ids: Tensor,
+    dist_index: Tensor,
+    *,
+    scheduler: CommScheduler | None,
+    name: str,
+    order: Tensor | None = None,
+    send_counts: Tensor | None = None,
+) -> PendingOwnerRequest:
     scheduler = scheduler or CommScheduler()
     if order is None or send_counts is None:
         order, send_counts = owner_route(node_ids, dist_index)
-    recv_counts = all_to_all_counts(send_counts.long().cpu())
-    route = Route(tuple(send_counts.tolist()), tuple(recv_counts.tolist()), send_index=order.long())
-    recv_nodes = scheduler.finish_push(scheduler.launch_push(route, node_ids.long(), name=f"{name}:nodes"))
-    return OwnerRequest(order.long(), send_counts.long().cpu(), recv_counts.long().cpu(), recv_nodes.long(), scheduler)
+    send_counts = send_counts.long().cpu()
+    world_size = scheduler.world_size
+    count_route = Route((1,) * world_size, (1,) * world_size)
+    count_handle = scheduler.launch_push(
+        count_route,
+        send_counts.view(world_size, 1),
+        name=f"{name}:counts",
+    )
+    return PendingOwnerRequest(
+        node_ids.long(), order.long(), send_counts, count_handle, scheduler, name,
+    )
+
+
+def finish_owner_request(pending: PendingOwnerRequest) -> OwnerRequest:
+    recv_counts = pending.scheduler.finish_push(pending.count_handle).view(-1).long().cpu()
+    send_counts = pending.send_counts
+    route = Route(
+        tuple(send_counts.tolist()),
+        tuple(recv_counts.tolist()),
+        send_index=pending.order,
+    )
+    recv_nodes = pending.scheduler.finish_push(pending.scheduler.launch_push(
+        route,
+        pending.node_ids,
+        name=f"{pending.name}:nodes",
+    ))
+    return OwnerRequest(
+        pending.node_ids,
+        pending.order,
+        send_counts,
+        recv_counts,
+        recv_nodes.long(),
+        pending.scheduler,
+    )
 
 
 def submit_owner_responses(request: OwnerRequest, values: dict[str, Tensor], *, name: str) -> dict[str, Any]:
