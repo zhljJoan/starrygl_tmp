@@ -8534,3 +8534,23 @@ repeatable gain and the source change was removed. Output:
 rejected payload buckets, this confirms that parity requires eliminating or
 reusing complete request/count/response phases, not packing fields or tuning
 one transfer. Eight-GPU remains gated.
+
+2026-09-23: Connected the existing static node-feature replica lowering to
+`Trainer.prepare` and enabled it for the WIKI/TGN historical parity config.
+The common path remains prepared Event row -> native sampler -> Batch ->
+dependency access -> model/task -> state update; only the static feature
+provider changes, removing its per-window owner request/count/response phase.
+The option defaults off, is included in the artifact signature when enabled,
+and uses existing `FeatureManager`/Torch indexing without a new cache, loader,
+or kernel. The focused store/CLI suite passed 63 tests with 1 skip; the combined
+paper-config run also exposed one unrelated existing `local` versus
+`shared_hot` assertion. On gpu06, the four-A40 10-epoch screen measured warm
+median/mean 0.6424/0.6674 s versus the adjacent partitioned-feature control's
+0.6887/0.6945 s (6.7%/3.9% lower). WIKI replicas contain 9,228 x 100 float
+rows per rank and increase each feature artifact by roughly 2 MB because edge
+features dominate the file. Outputs:
+`/mnt/nfs/zlj/starrygl_static_feature_replica_screen_4gpu` and
+`/mnt/nfs/zlj/starrygl_static_feature_replica_adjacent_control_4gpu`. Retain
+this bounded physical option pending a full convergence run and a matched
+collective trace; it does not by itself close the MemShare gap, so eight-GPU
+remains gated.

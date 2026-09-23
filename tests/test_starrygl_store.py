@@ -141,6 +141,30 @@ def test_prepare_artifacts_uses_compiled_view_and_new_store_contract(tmp_path, m
     assert trainer.prepare_artifacts(world_size=1) == root
 
 
+def test_prepare_artifacts_can_replicate_static_node_features(tmp_path) -> None:
+    trainer = sg.compile(
+        data_source={
+            "src": torch.tensor([0, 1]),
+            "dst": torch.tensor([1, 2]),
+            "ts": torch.tensor([1.0, 2.0]),
+            "num_nodes": 3,
+            "node_feat": torch.arange(6, dtype=torch.float32).reshape(3, 2),
+            "temporal_representation": "event_stream",
+        },
+        backbone={"name": "tgn", "temporal_representation": "event_stream"},
+        task_segment={"name": "edge_prediction"},
+        runtime={"preprocess": {"replicate_node_features": True}},
+        artifact_root=tmp_path,
+    )
+
+    trainer.prepare_artifacts(world_size=2)
+
+    for rank in range(2):
+        shard = torch.load(tmp_path / f"feature_{rank:03d}.pt", weights_only=False)
+        assert shard["node_features_replicated"].item()
+        assert shard["node_ids"].tolist() == [0, 1, 2]
+
+
 def test_prepare_signature_ignores_training_options_and_rejects_changed_data(tmp_path) -> None:
     data = {
         "src": torch.tensor([0, 1]),
