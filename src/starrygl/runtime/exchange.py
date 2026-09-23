@@ -135,6 +135,11 @@ def _launch(store, kind, ids, names, comm, assume_unique, defer_local_read):
             keys=keys, out=_empty(manager, kind, keys, 0), kind=kind
         )
     row_map = _row_map(manager, kind)
+    if replicated and _identity(manager, kind):
+        if not defer_local_read:
+            return PendingNodeFeatureFetch(keys=keys, out=_read_ids(manager, kind, ids, keys), kind=kind)
+        pending = PendingNodeFeatureFetch(keys=keys, out={}, kind=kind)
+        return _defer_local(pending, manager, ids, None, f"{kind}_ids")
     if row_map is None:
         if not defer_local_read:
             return PendingNodeFeatureFetch(keys=keys, out=_read_ids(manager, kind, ids, keys), kind=kind)

@@ -8620,3 +8620,16 @@ The candidate is retained without a new abstraction or kernel. Remaining parity
 work must attribute the similarly numerous but slower copies and remove another
 complete dependency stage; four-GPU is still 2.07x MemShare and eight-GPU
 remains gated.
+
+2026-09-23: Removed the residual partition-materialization stage for a fully
+replicated identity feature plane. Such reads now index the resident feature
+tensor directly instead of constructing presence masks, compact positions,
+temporary outputs, and an index-copy after communication had already been
+disabled. This is one shared node/edge dependency-provider branch, not a new
+cache, API, or kernel. Focused store/dataloader/exchange tests passed 28 with
+1 distributed skip. The matched four-A40 10-epoch screen measured warm
+median/mean 0.5968/0.6040 s versus 0.6211/0.6193 s, with the same training-loss
+trajectory and 1.81 GB peak allocation. Output:
+`/mnt/nfs/zlj/starrygl_replicated_edge_direct_screen_v2_4gpu`. Retain as a
+screened candidate pending 50-epoch convergence validation; eight-GPU remains
+gated.
