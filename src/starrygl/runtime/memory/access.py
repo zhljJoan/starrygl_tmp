@@ -127,6 +127,7 @@ def _request_nodes(runtime, memory, nodes, node_access):
         memory._node_dist_index_on(nodes.device),
         scheduler=runtime.comm or CommScheduler(),
         name=f"state_mailbox_request:{runtime.kind}",
+        packet_capacity=int(memory.node_dist_index.numel()),
     )
 
 

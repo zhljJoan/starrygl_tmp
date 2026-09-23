@@ -8775,3 +8775,18 @@ median/mean was 0.6266/0.6205 s versus the retained short screen's
 on the critical path and their removal changed asynchronous scheduling enough
 to regress wall time. All source, test and contract changes were removed;
 eight-GPU remains gated.
+
+2026-09-23: Started a fixed UID owner-request packet candidate after the async
+count wrapper failed. Node features and state/mailbox now use the same internal
+owner-request option: one fixed row per destination contains a count header and
+sorted UIDs. This removes the separate count collective while preserving the
+existing provider responses, global collective order, owner semantics, cache
+policy and model/task math. EID remains on the dynamic route because global
+edge-count padding is materially larger. Packing and compaction use Torch
+tensor operators; no Python per-node loop, DGL reconstruction, fallback route,
+new process group or custom kernel was added. Modified files:
+`store/remote_fetch.py`, `runtime/exchange.py`, `runtime/memory/access.py`, one
+focused test, `design/uid_request_packet.md`, and this log. Focused tests pass
+31 with 8 skips; two-rank Gloo combined/empty owner routes pass 2 per rank;
+compile, line-count and diff checks pass. Four-GPU screening is pending and
+eight-GPU remains gated.
