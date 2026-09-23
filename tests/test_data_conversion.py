@@ -37,6 +37,17 @@ def test_tgl_conversion_preserves_time_splits_features_and_node_labels(tmp_path)
     assert graph.node_label_split.tolist() == [0, 1]
 
 
+def test_tgl_loads_memshare_learned_node_features(tmp_path) -> None:
+    torch.save({
+        "src": torch.tensor([0]),
+        "dst": torch.tensor([1]),
+    }, tmp_path / "graph.pt")
+    expected = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+    torch.save(expected, tmp_path / "learned_node_feats.pt")
+
+    assert torch.equal(load_graph_data(tmp_path).node_feat, expected)
+
+
 def test_dtdg_numeric_reader_preserves_headerless_first_row(tmp_path) -> None:
     plain = tmp_path / "edges.txt"
     plain.write_text("1 2 3\n4 5 6\n", encoding="utf-8")

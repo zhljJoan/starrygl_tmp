@@ -15,7 +15,7 @@ from .build_part_graph import PrepareConfig, PreparedViews, materialize_graph_vi
 
 
 _SIDECAR_FILES = {
-    "node_feat": ("node_feat.pt", "node_features.pt"),
+    "node_feat": ("node_feat.pt", "node_features.pt", "learned_node_feats.pt"),
     "edge_feat": ("edge_feat.pt", "edge_features.pt"),
     "node_label": ("node_label.pt",),
     "edge_label": ("edge_label.pt",),

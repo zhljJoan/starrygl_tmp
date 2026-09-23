@@ -1,0 +1,70 @@
+{
+  "data": {
+    "source": "${STARRYGL_DATA_ROOT}/TGL-DATA/WIKI",
+    "temporal_representation": "event_stream"
+  },
+  "backbone": {
+    "name": "tgn",
+    "in_dim": 100,
+    "edge_dim": 172,
+    "hidden_dim": 100,
+    "out_dim": 100,
+    "time_dim": 100,
+    "num_layers": 1,
+    "num_heads": 2,
+    "mailbox_size": 1,
+    "temporal_representation": "event_stream",
+    "spatial_aggregation": "sampled_neighbor",
+    "coupling": "coupled",
+    "state": "persistent"
+  },
+  "task": {
+    "name": "edge_prediction",
+    "services": {
+      "negative_sampling": {
+        "ratio": 1,
+        "mode": "dst",
+        "train": {"policy": "random", "local_probability": 0.9, "remote_probability": 0.1},
+        "eval": {"policy": "random"},
+        "test": {"policy": "random"}
+      }
+    }
+  },
+  "runtime": {
+    "temporal_state": {
+      "consistency": "bounded_stale",
+      "max_staleness": 1,
+      "filter": {"enabled": true, "min_cosine_distance": 0.3, "max_skip": 10},
+      "smooth_aggregation": {"enabled": true, "gamma_init": 0.5}
+    },
+    "sampling": {
+      "mode": "neighbor",
+      "window": {"policy": "event_window"},
+      "neighbor": {
+        "fanouts": [20],
+        "policy": "recent",
+        "workers": 32,
+        "boundary_sampling": {"enabled": true, "probability": 0.1}
+      }
+    },
+    "preprocess": {
+      "partition_backend": "speed_partition",
+      "speed_partition_beta": 0.1,
+      "chunks_per_rank": 128,
+      "hot_node_ratio": 0.1,
+      "time_split": "batch",
+      "target_batch_size": 3000,
+      "split_ratios": [0.7, 0.15, 0.15]
+    },
+    "gradient_sync": "ddp",
+    "train": {
+      "batch_size": 3000,
+      "epochs": 50,
+      "optimizer": "adam",
+      "lr": 0.0004,
+      "weight_decay": 0.0,
+      "dropout": 0.2,
+      "att_dropout": 0.2
+    }
+  }
+}

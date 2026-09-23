@@ -8329,3 +8329,19 @@ unavoidable experiment-only observation point. Modified
 the existing Python callback runs once per batch only when explicitly enabled.
 Remaining risk: enabling trace affects wall time, so parity timing must be run
 with tracing disabled after the first divergent window is identified.
+2026-09-23: Began the sequential MemShare historical scaling comparison. The
+matrix is `{MemShare, StarryGL} x {4 GPU, 8 GPU}`, with 8 GPU gated on 4 GPU
+parity. Every run fixes WIKI, TGN hidden/out/time dimension 100, two heads,
+fanout 20 recent, batch 3000, Adam 4e-4, dropout/attention dropout 0.2, random
+destination negatives 1:1, historical cosine-distance threshold 0.3, learnable
+gamma initialized to 0.5, seed 6773, split and 50 epochs. Primary metrics are
+warm train-only median and speedup; loss/AP/AUC curves are correctness gates.
+Expected cost is four short WIKI runs (well below one GPU-hour plus Prepare).
+The shared data loader now recognizes MemShare's existing
+`learned_node_feats.pt`; this fixes the discovered random-2D versus learned-100D
+input mismatch without adding a loader branch. Added
+`configs/event_wiki_tgn_memshare_historical.json` and a focused sidecar test.
+`tests/test_data_conversion.py`: 4 passed; matched config assertions passed.
+The broader paper/default tests still have pre-existing cache-policy/default
+documentation failures unrelated to this change. Native sampler and runtime
+hot paths are unchanged.
