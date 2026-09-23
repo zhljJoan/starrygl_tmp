@@ -8579,3 +8579,17 @@ from about 30 MB to 107 MB. Output:
 `/mnt/nfs/zlj/starrygl_static_edge_replica_screen_4gpu`. Retain only as a
 screened candidate pending 50-epoch convergence/performance and collective
 trace validation; eight-GPU remains gated.
+
+2026-09-23: The 50-epoch static edge-feature replica validation passed.
+Warm epochs 2--50 measured median/mean 0.6286/0.6333 s, 6.2%/6.0% below the
+retained 0.6699/0.6740 s. Test AP/AUC was 0.967772/0.962469, within
+0.000591/0.000431 of MemShare/master. The matched two-epoch trace reduced
+send/recv from 1,440 launches / 0.904 s to 1,200 / 0.633 s while compute stayed
+essentially unchanged; profile:
+`/mnt/nfs/zlj/starrygl_static_edge_replica_profile_4gpu/timeline.nsys-rep`.
+The candidate is retained because it removes a complete immutable dependency
+phase and preserves convergence, but its 107 MB/rank WIKI artifact makes it a
+capacity-selected option rather than the universal default. CUDA memcpy API
+time remains 1.795 s for 12,480 calls versus MemShare's 0.710 s for 12,548,
+so the next step is existing GPU feature residency, not another payload pack.
+Four-GPU performance remains 2.10x MemShare and eight-GPU remains gated.
