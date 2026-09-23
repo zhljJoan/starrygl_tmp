@@ -49,54 +49,14 @@ def submit_owner_request(
     name: str,
     order: Tensor | None = None,
     send_counts: Tensor | None = None,
-    packet_capacity: int | None = None,
 ) -> OwnerRequest:
     scheduler = scheduler or CommScheduler()
     if order is None or send_counts is None:
         order, send_counts = owner_route(node_ids, dist_index)
-    if packet_capacity is not None:
-        return _submit_fixed_owner_request(
-            node_ids, order, send_counts, scheduler, name, packet_capacity,
-        )
-    recv_counts = all_to_all_counts(send_counts.long().cpu(), group=scheduler.group)
+    recv_counts = all_to_all_counts(send_counts.long().cpu())
     route = Route(tuple(send_counts.tolist()), tuple(recv_counts.tolist()), send_index=order.long())
     recv_nodes = scheduler.finish_push(scheduler.launch_push(route, node_ids.long(), name=f"{name}:nodes"))
     return OwnerRequest(order.long(), send_counts.long().cpu(), recv_counts.long().cpu(), recv_nodes.long(), scheduler)
-
-
-def _submit_fixed_owner_request(
-    node_ids: Tensor,
-    order: Tensor,
-    send_counts: Tensor,
-    scheduler: CommScheduler,
-    name: str,
-    capacity: int,
-) -> OwnerRequest:
-    send_counts = send_counts.long().to(node_ids.device)
-    world_size = scheduler.world_size
-    capacity = int(capacity)
-    if capacity < int(send_counts.max().item()):
-        raise ValueError("owner request packet capacity is too small")
-    packet = node_ids.new_full((world_size, capacity + 1), -1)
-    packet[:, 0] = send_counts
-    if int(node_ids.numel()):
-        offsets = send_counts.cumsum(0) - send_counts
-        owners = torch.repeat_interleave(
-            torch.arange(world_size, device=node_ids.device), send_counts,
-        )
-        columns = torch.arange(int(node_ids.numel()), device=node_ids.device)
-        columns -= torch.repeat_interleave(offsets, send_counts)
-        packet[owners, columns + 1] = node_ids.index_select(0, order.to(node_ids.device))
-    sizes = (capacity + 1,) * world_size
-    received = scheduler.finish_push(scheduler.launch_push(
-        Route(sizes, sizes), packet.view(-1), name=f"{name}:packet",
-    )).view(world_size, capacity + 1)
-    recv_counts = received[:, 0].long().cpu()
-    columns = torch.arange(capacity, device=received.device)
-    recv_nodes = received[:, 1:][columns.unsqueeze(0) < received[:, :1]]
-    return OwnerRequest(
-        order.long(), send_counts.cpu(), recv_counts, recv_nodes.long(), scheduler,
-    )
 
 
 def submit_owner_responses(request: OwnerRequest, values: dict[str, Tensor], *, name: str) -> dict[str, Any]:

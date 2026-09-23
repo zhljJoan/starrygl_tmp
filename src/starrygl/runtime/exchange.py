@@ -169,15 +169,13 @@ def _launch(store, kind, ids, names, comm, assume_unique, defer_local_read):
 
 def _launch_remote(store, kind, ids, keys, comm, out, missing_pos, remote, order=None, send_counts=None):
     scheduler = comm or CommScheduler()
-    dist_index = _partition_index(store, f"{kind}_dist_index", ids.device)
     request = submit_owner_request(
         ids,
-        dist_index,
+        _partition_index(store, f"{kind}_dist_index", ids.device),
         scheduler=scheduler,
         name=f"{kind}_feature_request",
         order=order,
         send_counts=send_counts,
-        packet_capacity=int(dist_index.numel()) if kind == "node" else None,
     )
     response = _owner_read(store.features, kind, request.recv_nodes, keys)
     handles = submit_owner_responses(request, response, name=f"{kind}_feature_response")
