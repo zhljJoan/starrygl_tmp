@@ -8775,3 +8775,18 @@ median/mean was 0.6266/0.6205 s versus the retained short screen's
 on the critical path and their removal changed asynchronous scheduling enough
 to regress wall time. All source, test and contract changes were removed;
 eight-GPU remains gated.
+
+2026-09-23: Rejected the fixed UID request packet candidate. It used one
+equal-split all-to-all row per owner containing `[count, UIDs, padding]`, so
+node feature and state/mailbox requests removed the separate dynamic count
+collective without changing responses or semantics. Focused tests passed 31
+with 8 skips; two-rank Gloo combined/empty routes passed 2 per rank; a four-A40
+smoke completed without deadlock and epoch 2 measured 0.5791 s. The required
+10-epoch screen measured epochs 2--10 median/mean 0.6548/0.6412 s versus the
+retained 0.5968/0.6040 s. Output:
+`/mnt/nfs/zlj/starrygl_uid_packet_screen_4gpu`. Padding, packet writes and mask
+compaction outweighed one removed collective, and the cost scales poorly to
+eight ranks. All source, test and design-note changes were reverted. Dynamic
+UID routing now requires an exact route prepared before dependency access or a
+real static subscriber route; global-node-capacity packets are rejected.
+Eight-GPU remains gated.
