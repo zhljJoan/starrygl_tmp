@@ -8684,7 +8684,12 @@ versus 0.6075 s for the adjacent retained-code A/B smoke. Output:
 `/mnt/nfs/zlj/starrygl_fixed_epoch_smoke_4gpu`. Production code is unchanged:
 the existing `ready_slot`/launch-confirmation handshake is the fixed epoch, so
 no dispatcher, queue, barrier, process group, payload packing, or kernel was
-introduced. A 10-epoch stability screen remains pending; eight-GPU remains
+introduced. The 10-epoch four-A40 screen also completed without deadlock;
+epochs 2--10 median/mean was 0.6367/0.6232 s, versus the retained short
+screen's 0.5968/0.6040 s. Output:
+`/mnt/nfs/zlj/starrygl_fixed_epoch_screen_4gpu`. Because production execution
+is byte-for-byte unchanged, this run validates ordering but provides no causal
+performance improvement; the difference is run variance. Eight-GPU remains
 gated.
 
 2026-09-24: Rejected moving dependency launch execution onto the Stage-A OS
