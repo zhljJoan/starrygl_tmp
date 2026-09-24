@@ -8671,16 +8671,20 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
-2026-09-24: Started the requested pure double-buffer screen. Removed the main
-DataLoader condition that waited for `prefetch(k+1)` launch before yielding
-ready batch `k`. Stage B still owns the exact count/request/response lifecycle,
-stores receive tensors and asynchronous handles in the existing depth-one
-pending batch, and resolves them before that next batch enters the ready queue.
-The main thread therefore waits only when consuming the next ready batch. No
-busy-spin, new queue, process group, payload layout, cache/state semantics or
-kernel was added. Modified files: `runtime/dataloader/loader.py`, its contract,
-focused ordering tests, and this log. Local validation is pending before the
-four-GPU performance screen; eight-GPU remains gated.
+2026-09-24: Rejected simply removing the DataLoader pre-yield launch wait. The
+candidate kept the existing depth-one Stage-B pending slot and let the main
+thread yield batch `k` without waiting for the exact dependency route of batch
+`k+1` to launch. Local ordering/runtime tests passed 24 with 8 skips, compile
+and diff checks passed. The four-A40 two-epoch smoke then deadlocked before the
+first epoch: all four ranks stayed active at full GPU utilization for about one
+minute after sampling initialization. Current-batch model/state collectives
+had interleaved with next-batch Stage-B collectives on the shared NCCL
+communicator, so ranks no longer had one globally ordered communication epoch.
+Output: `/mnt/nfs/zlj/starrygl_no_preyield_wait_smoke_4gpu`. The candidate was
+terminated and all source, contract, and test changes were removed. Keep the
+pre-yield launch-order boundary until access and model communication have one
+explicit global `CommPlan`; a queue alone cannot make concurrent collectives
+safe. Eight-GPU remains gated.
 
 2026-09-23: Rejected exposing the dynamic owner-count exchange as an async
 handle without moving its dependency boundary. The candidate launched the

@@ -56,16 +56,15 @@ Stage A 取出 tuple 后在当前 compute stream 上执行 `wait_event`，登记
 初始化先完成 `prefetch(k0)`。稳态每个 `k` 固定为：
 
 ```text
-Stage A 取得 ready(k) 并释放下一个 Stage-B slot
-  -> Stage B 启动 prefetch(k+1)，把 recv tensor/handler 留在 depth-one queue
-  || Stage A: layer forward / endpoint / reverse / gradient / commit
-  -> Stage A 下一次取 batch 时等待并完成 prefetch(k+1)
+Stage B 提交 prefetch(k+1) 的全部通信
+  -> 唤醒 Stage A(k)
+  -> Stage A: exact state / layer forward / endpoint / reverse / gradient / commit
   -> Stage A ack
   -> Stage B 才能提交 prefetch(k+2)
 ```
 
-不增加 dispatcher、busy-spin 或新队列。depth-one queue 本身限制只有一个 pending
-batch；runtime layerwise scan 独立保证各层顺序。
+不再增加唯一 dispatcher 或内部 `CommPlan`。双缓冲握手直接保证每个 rank 都先
+提交 `prefetch(k+1)`，再进入 A(k)；runtime layerwise scan 独立保证各层顺序。
 使用同一 process group 时，各 rank 必须经过相同的 collective 调用点。缺少
 `k+1` 的尾部 step、没有 target 或没有 Route 行时，只要 peer 需要通信，本 rank
 仍提交空 payload。

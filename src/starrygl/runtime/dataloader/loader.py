@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from itertools import islice
 from queue import Empty, Full, Queue
-from threading import Event, Semaphore, Thread
+from threading import Condition, Event, Semaphore, Thread
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import torch
@@ -136,8 +136,10 @@ class DataLoader:
         ready_queue: Queue = Queue(maxsize=1)
         request_slot = Semaphore(1)
         ready_slot = Semaphore(1)
+        changed = Condition()
         stop = Event()
         sentinel = object()
+        progress: dict[str, Any] = {"launched": 0, "done": False, "error": None}
 
         def source_worker() -> None:
             try:
@@ -160,16 +162,26 @@ class DataLoader:
                     item = _get(request_queue, stop)
                     if item is sentinel:
                         ready_slot.release()
+                        with changed:
+                            progress["done"] = True
+                            changed.notify_all()
                         _put(ready_queue, sentinel, stop)
                         return
                     if isinstance(item, BaseException):
                         raise item
                     request_slot.release()
                     launched = self._launch(item)
+                    with changed:
+                        progress["launched"] += 1
+                        changed.notify_all()
                     if not _put(ready_queue, self._finish(launched), stop):
                         ready_slot.release()
                         return
             except BaseException as exc:
+                with changed:
+                    progress["error"] = exc
+                    progress["done"] = True
+                    changed.notify_all()
                 _put(ready_queue, exc, stop)
 
         workers = (
@@ -179,6 +191,7 @@ class DataLoader:
         for worker in workers:
             worker.start()
 
+        consumed = 0
         try:
             while True:
                 item = _get(ready_queue, stop)
@@ -186,12 +199,23 @@ class DataLoader:
                     return
                 if isinstance(item, BaseException):
                     raise item
+                consumed += 1
                 ready_slot.release()
+                with changed:
+                    changed.wait_for(
+                        lambda: progress["launched"] > consumed
+                        or progress["done"]
+                    )
+                    error = progress["error"]
+                if error is not None:
+                    raise error
                 yield self._wait_ready(item)
         finally:
             stop.set()
             request_slot.release()
             ready_slot.release()
+            with changed:
+                changed.notify_all()
             for queue in (request_queue, ready_queue):
                 try:
                     queue.put_nowait(sentinel)

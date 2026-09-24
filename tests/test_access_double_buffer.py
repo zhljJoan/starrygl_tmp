@@ -203,12 +203,12 @@ def test_double_buffer_launches_one_feature_window_ahead_without_state_lookahead
 
     assert events == [
         "feature:0",
+        "feature:1",
         "state:0",
         "encode:0",
-        "feature:1",
+        "feature:2",
         "state:1",
         "encode:1",
-        "feature:2",
         "state:2",
         "encode:2",
     ]
@@ -294,14 +294,14 @@ def test_materialize_and_dependency_launch_stay_one_window_ahead(monkeypatch) ->
     assert events == [
         "materialize:0",
         "feature:0",
-        "state:0",
-        "encode:0",
         "materialize:1",
         "feature:1",
-        "state:1",
-        "encode:1",
+        "state:0",
+        "encode:0",
         "materialize:2",
         "feature:2",
+        "state:1",
+        "encode:1",
         "state:2",
         "encode:2",
     ]
@@ -352,12 +352,12 @@ def test_bounded_stale_state_launches_with_stage_b(monkeypatch) -> None:
     assert events == [
         "feature:0",
         "state:0",
-        "encode:0",
         "feature:1",
         "state:1",
-        "encode:1",
+        "encode:0",
         "feature:2",
         "state:2",
+        "encode:1",
         "encode:2",
     ]
 
@@ -384,14 +384,14 @@ def test_stage_a_waits_exact_state_but_not_stage_b_prefetched_state(monkeypatch)
 
     assert exact_events == [
         "feature:0",
+        "feature:1",
         "finish:owner",
         "state:0",
         "encode:0",
-        "feature:1",
+        "feature:2",
         "finish:owner",
         "state:1",
         "encode:1",
-        "feature:2",
         "finish:owner",
         "state:2",
         "encode:2",
@@ -400,12 +400,12 @@ def test_stage_a_waits_exact_state_but_not_stage_b_prefetched_state(monkeypatch)
     assert bounded_events == [
         "feature:0",
         "state:0",
-        "encode:0",
         "feature:1",
         "state:1",
-        "encode:1",
+        "encode:0",
         "feature:2",
         "state:2",
+        "encode:1",
         "encode:2",
         "finish:final",
     ]
