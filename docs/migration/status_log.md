@@ -8671,6 +8671,19 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
+2026-09-24: Validated the retained Stage-A-authorized communication epoch
+against the concrete dependent-collective sequence rather than adding another
+scheduler. The distributed double-buffer test now executes count all-to-all,
+request UID all-to-all plus wait, asynchronous response all-to-all, then a
+DDP-like all-reduce. Rank 1 delays entry to the all-reduce and contributes an
+empty request payload, proving that empty participation and rank skew retain
+the same collective order. The two-rank Gloo test passed on both ranks in three
+consecutive runs; the local file passed 11 tests with 2 skips. Production code
+is unchanged: the existing `ready_slot`/launch-confirmation handshake is the
+fixed epoch, so no dispatcher, queue, barrier, process group, payload packing,
+or kernel was introduced. A four-A40 smoke is pending; eight-GPU remains
+gated.
+
 2026-09-24: Rejected moving dependency launch execution onto the Stage-A OS
 thread. Both variants preserved two depth-one queues: one deferred finish to
 the next Stage-A boundary, and one returned pending handles immediately to

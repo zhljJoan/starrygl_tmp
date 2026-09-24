@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from threading import Event, get_ident
+from time import sleep
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +10,7 @@ import torch
 import torch.distributed as dist
 
 from starrygl.batch import Batch
-from starrygl.runtime.comm import Route
+from starrygl.runtime.comm import Route, all_to_all_counts
 from starrygl.runtime.exchange import PendingNodeFeatureFetch
 from starrygl.model import ModelOutput, StarryModel
 import starrygl.runtime.dataloader.loader as runtime_batches
@@ -501,21 +502,34 @@ def test_distributed_double_buffer_preserves_collective_order(monkeypatch) -> No
             feature_step += 1
             step = feature_step
             events.append(f"feature:{step}")
-            payload = torch.tensor(
-                [[step * 100 + rank * 10 + dst] for dst in range(world_size)],
-                dtype=torch.float32,
+            send_counts = torch.tensor(
+                [0, 1] if rank == 0 else [0, 0], dtype=torch.long,
             )
-            route = Route(
-                send_sizes=(1,) * world_size,
-                recv_sizes=(1,) * world_size,
+            recv_counts = all_to_all_counts(send_counts)
+            request = Route(
+                send_sizes=tuple(send_counts.tolist()),
+                recv_sizes=tuple(recv_counts.tolist()),
             )
-            handle = comm.launch_push(route, payload, name=f"double_buffer:{step}")
+            node_ids = (
+                torch.tensor([step], dtype=torch.long)
+                if rank == 0
+                else torch.empty(0, dtype=torch.long)
+            )
+            requested = comm.finish_push(
+                comm.launch_push(request, node_ids, name=f"double_buffer:{step}:request")
+            )
+            response = Route(request.recv_sizes, request.send_sizes)
+            handle = comm.launch_push(
+                response,
+                requested.float().reshape(-1, 1),
+                name=f"double_buffer:{step}:response",
+            )
             pending = PendingNodeFeatureFetch(
                 keys=("node",),
-                out={"node": torch.zeros(world_size, 1)},
+                out={"node": torch.zeros(request.send_len, 1)},
                 remote=True,
-                missing_pos=torch.arange(world_size),
-                order=torch.arange(world_size),
+                missing_pos=torch.arange(request.send_len),
+                order=torch.arange(request.send_len),
                 response_handles={"node": handle},
                 scheduler=comm,
             )
@@ -524,11 +538,17 @@ def test_distributed_double_buffer_preserves_collective_order(monkeypatch) -> No
         class _DistributedModel(_RecordingModel):
             def encode(self, batch: Batch) -> ModelOutput:
                 step = self.step + 1
-                expected = torch.tensor(
-                    [[step * 100 + src * 10 + rank] for src in range(world_size)],
-                    dtype=torch.float32,
+                expected = (
+                    torch.tensor([[step]], dtype=torch.float32)
+                    if rank == 0
+                    else torch.empty((0, 1))
                 )
                 assert torch.equal(batch.features["node"], expected)
+                if rank == 1:
+                    sleep(0.02)
+                marker = torch.tensor(float(rank + 1))
+                dist.all_reduce(marker)
+                assert marker.item() == 3.0
                 return super().encode(batch)
 
         monkeypatch.setattr(

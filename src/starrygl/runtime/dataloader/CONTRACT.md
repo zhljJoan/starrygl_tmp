@@ -116,8 +116,9 @@ snapshot：选择 Snapshot-CSC 历史行和 chunk 前缀
 
 ## 当前未对齐
 
-- 通信上下文不负责跨 rank 排序；当前仍缺少覆盖 Stage B/A 偏斜到达和所有空参与者
-  调用点的完整两 rank 测试。
+- 通信上下文不负责跨 rank 排序；两 rank 测试已覆盖 count、UID request、async
+  response、空 payload、偏斜到达和随后的 DDP-like all-reduce。其他模型新增
+  collective slot 时仍必须扩展该顺序测试。
 - dynamic feature/state Route 的 counts 和 request-node 完成仍是同步子阶段；payload
   已异步发起并由上一批 Stage A 隐藏。只有 native/prepared Route 消除这个动态
   握手后，才能宣称端到端全异步。
