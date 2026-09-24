@@ -8671,6 +8671,17 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
+2026-09-24: Started the requested pure double-buffer screen. Removed the main
+DataLoader condition that waited for `prefetch(k+1)` launch before yielding
+ready batch `k`. Stage B still owns the exact count/request/response lifecycle,
+stores receive tensors and asynchronous handles in the existing depth-one
+pending batch, and resolves them before that next batch enters the ready queue.
+The main thread therefore waits only when consuming the next ready batch. No
+busy-spin, new queue, process group, payload layout, cache/state semantics or
+kernel was added. Modified files: `runtime/dataloader/loader.py`, its contract,
+focused ordering tests, and this log. Local validation is pending before the
+four-GPU performance screen; eight-GPU remains gated.
+
 2026-09-23: Rejected exposing the dynamic owner-count exchange as an async
 handle without moving its dependency boundary. The candidate launched the
 fixed-size count all-to-all through the existing `CommScheduler`, immediately
