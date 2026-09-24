@@ -8671,6 +8671,22 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
+2026-09-24: Started Stage-A-owned dependency launch after the unsafe pre-yield
+experiment identified shared-communicator ordering as the failure boundary.
+The common path remains `window row -> accessor -> materialized Batch ->
+dependency access -> model/task -> state update`; only the unavoidable
+specialization boundary changes ownership: Stage B materializes, while Stage A
+launches all distributed feature/stale-state dependencies at the batch
+synchronization point after the preceding model/DDP work. Existing async
+handles and buffers remain the depth-one pending slot and are finished at the
+next Stage-A synchronization point. No queue, process group, public API,
+payload format, cache policy or kernel is added. This selects the existing
+Torch/NCCL async collective and two queues; DGL has no collective scheduler,
+and a custom C++/CUDA operator cannot repair cross-thread collective ordering.
+Modified files: `runtime/dataloader/loader.py`, its contract, focused ordering
+tests, and this log. Local and four-A40 validation are pending; eight-GPU
+remains gated.
+
 2026-09-24: Rejected simply removing the DataLoader pre-yield launch wait. The
 candidate kept the existing depth-one Stage-B pending slot and let the main
 thread yield batch `k` without waiting for the exact dependency route of batch

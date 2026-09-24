@@ -113,6 +113,7 @@ def _run_epoch(
     record_materialize: bool = False,
     record_lifecycle: bool = False,
     materialize_threads: list[int] | None = None,
+    launch_threads: list[int] | None = None,
     wait_policy: str = "block",
     state_commit_wait_interval: int | None = None,
 ) -> None:
@@ -143,6 +144,8 @@ def _run_epoch(
     def launch_features(batch, *args, **kwargs):
         nonlocal feature_step
         del args, kwargs
+        if launch_threads is not None:
+            launch_threads.append(get_ident())
         feature_step += 1
         events.append(f"feature:{feature_step}")
         return batch, (), None
@@ -316,6 +319,14 @@ def test_materialize_runs_in_stage_b_worker(monkeypatch) -> None:
     assert materialize_threads
     assert set(materialize_threads) == {materialize_threads[0]}
     assert materialize_threads[0] != get_ident()
+
+
+def test_dependency_launch_runs_at_stage_a_sync_point(monkeypatch) -> None:
+    launch_threads: list[int] = []
+
+    _run_epoch(monkeypatch, events=[], launch_threads=launch_threads)
+
+    assert launch_threads == [get_ident()] * 3
 
 
 def test_ready_pipeline_does_not_claim_reschedule_semantics(monkeypatch) -> None:
