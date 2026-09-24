@@ -8,9 +8,9 @@ request/result 对象或第三个队列。
 ```text
 Stage C / CPU native
   -> request_queue(maxsize=1)
-Stage B / Batch materialization
+Stage B / H2D + dependency communication
   -> ready_queue(maxsize=1)
-Stage A / dependency launch + GPU compute + task + state commit
+Stage A / GPU compute + task + state commit
 ```
 
 稳态最多同时存在：Stage A 的 `k`、Stage B 的 `k+1`、Stage C 的 `k+2`。
@@ -30,19 +30,19 @@ Stage C 必须在调用负采样或 sampler **之前**取得 request slot；不�
 cache、通信上下文和 materializer 在 `DataLoader.__init__` 中绑定一次，
 不通过逐窗口配置、plan 或 request wrapper 转发。
 
-`ready_queue` 内部传短 tuple `(Batch, node_ids, edge_rows)`。Stage A 在训练循环的
-批间同步点发起下一批 dependency collective，再把现有 pending handle/buffer
-交回 Stage B wait/writeback。CUDA event 不写入 `Batch`，Stage A 在当前 compute
-stream 上执行 `wait_event` 和 `record_stream`。
+`ready_queue` 内部传短 tuple `(Batch, ready_event)`。CUDA event 不写入 `Batch`；
+Stage A 取出 tuple 后在当前 compute stream 上执行 `wait_event`，登记
+`record_stream`，然后只把 `Batch` 交给训练循环。`ready` 不表示 exact state 已
+填充，Stage A 完成 exact hydrate 后才是 model-ready。
 
 ## CPU、GPU 和 buffer 所有权
 
 - Stage C 使用 CPU/native sampler，native 调用释放 GIL。负样本在 sampler 所在
   设备向量化生成，避免 GPU -> CPU roots 同步。
-- Stage B 只 materialize Batch，不发起 distributed collective。Stage A 在批间同步
-  点把 CPU tensor 转为 pinned memory，在 prefetch stream 上提交 non-blocking H2D
-  和 async feature/state collective；Stage B 随即完成 handle，并通过 stream
-  dependency 交付，不执行 host `synchronize()`。
+- Stage B 把 CPU tensor 转为 pinned memory，再在构造时创建的 prefetch stream 上
+  non-blocking H2D；feature payload 通过共享通信上下文的 async collective
+  发起。Stage-B worker 记录 event 后立即交付，Stage A 用 stream dependency 等待，
+  不执行 host `synchronize()`。
 - Batch tensor 至少存活到 backward 和 state delta 提取完成。Stage A 已对 Batch
   中的 CUDA storage 调用 `record_stream`；当前没有复用 pinned/send/recv buffer，
   引入 buffer pool 时仍需为池中 CPU/通信 buffer 增加独立回收事件。
@@ -56,17 +56,20 @@ stream 上执行 `wait_event` 和 `record_stream`。
 初始化先完成 `prefetch(k0)`。稳态每个 `k` 固定为：
 
 ```text
-Stage B materialize(k+1)
-  -> Stage A 批间同步点提交 prefetch(k+1) 的全部通信
-  -> Stage B finish/writeback(k+1)
+Stage B 提交 prefetch(k+1) 的全部通信
+  -> 唤醒 Stage A(k)
   -> Stage A: exact state / layer forward / endpoint / reverse / gradient / commit
-  -> Stage A 下一同步点消费 k+1，再提交 prefetch(k+2)
+  -> Stage A ack
+  -> Stage B 才能提交 prefetch(k+2)
 ```
 
-不再增加唯一 dispatcher 或内部 `CommPlan`。Stage A 是 collective 唯一发起线程，
-直接保证每个 rank 都先提交 `prefetch(k+1)`，再进入 A(k)，且不会与当前批 DDP
-交叉；runtime layerwise scan 独立保证各层顺序。使用同一 process group 时，各
-rank 必须经过相同的 collective 调用点。缺少
+这里的“Stage A 同步点发起”指 Stage A 在上一批 DDP/commit 返回后释放
+`ready_slot`，授权 Stage B 提交下一批 collective，并在进入下一批 compute 前确认
+launch 已完成；不要求把 packing、owner read 和 launch 调用搬到训练主线程。
+
+不再增加唯一 dispatcher 或内部 `CommPlan`。双缓冲握手直接保证每个 rank 都先
+提交 `prefetch(k+1)`，再进入 A(k)；runtime layerwise scan 独立保证各层顺序。
+使用同一 process group 时，各 rank 必须经过相同的 collective 调用点。缺少
 `k+1` 的尾部 step、没有 target 或没有 Route 行时，只要 peer 需要通信，本 rank
 仍提交空 payload。
 
@@ -113,8 +116,8 @@ snapshot：选择 Snapshot-CSC 历史行和 chunk 前缀
 
 ## 当前未对齐
 
-- 通信上下文不负责跨 rank 排序；Stage A 串行发起 prefetch/model/DDP collective，
-  仍需覆盖所有空参与者调用点的完整两 rank 测试。
+- 通信上下文不负责跨 rank 排序；当前仍缺少覆盖 Stage B/A 偏斜到达和所有空参与者
+  调用点的完整两 rank 测试。
 - dynamic feature/state Route 的 counts 和 request-node 完成仍是同步子阶段；payload
   已异步发起并由上一批 Stage A 隐藏。只有 native/prepared Route 消除这个动态
   握手后，才能宣称端到端全异步。

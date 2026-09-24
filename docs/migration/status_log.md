@@ -8671,25 +8671,25 @@ operation, not removable deduplication wall time. All source/test changes were
 removed. Further work must reduce synchronization boundaries themselves;
 eight-GPU remains gated.
 
-2026-09-24: Started Stage-A-owned dependency launch after the unsafe pre-yield
-experiment identified shared-communicator ordering as the failure boundary.
-The common path remains `window row -> accessor -> materialized Batch ->
-dependency access -> model/task -> state update`; only the unavoidable
-specialization boundary changes ownership: Stage B materializes, while Stage A
-launches all distributed feature/stale-state dependencies at the batch
-synchronization point after the preceding model/DDP work. The first version
-also deferred finish/writeback to the next Stage-A point; it completed without
-deadlock but epoch 2 took 2.0921 s, versus the retained 0.6041 s median. Output:
-`/mnt/nfs/zlj/starrygl_stage_a_launch_smoke_4gpu`. The revised handoff returns
-the existing async handles/buffers immediately to Stage B for concurrent
-finish/writeback while preserving Stage-A-only collective launch. No queue,
-process group, public API,
-payload format, cache policy or kernel is added. This selects the existing
-Torch/NCCL async collective and two queues; DGL has no collective scheduler,
-and a custom C++/CUDA operator cannot repair cross-thread collective ordering.
-Modified files: `runtime/dataloader/loader.py`, its contract, focused ordering
-tests, and this log. Local and four-A40 validation are pending; eight-GPU
-remains gated.
+2026-09-24: Rejected moving dependency launch execution onto the Stage-A OS
+thread. Both variants preserved two depth-one queues: one deferred finish to
+the next Stage-A boundary, and one returned pending handles immediately to
+Stage B for finish/writeback. Local tests passed 17 with 3 skips and the
+two-rank Gloo collective-order test passed on both ranks. Both four-A40 smokes
+completed without deadlock, but epoch 2 measured 2.0921 s and 2.0934 s. A
+same-machine, same-command checkout of retained `a97385f` measured 0.6075 s;
+forcing the complete dynamic route preparation/launch call onto the training
+thread therefore regressed 244%. Outputs:
+`/mnt/nfs/zlj/starrygl_stage_a_launch_smoke_4gpu`,
+`/mnt/nfs/zlj/starrygl_stage_a_launch_stage_b_finish_smoke_4gpu`, and
+`/mnt/nfs/zlj/starrygl_stage_a_ab_baseline_smoke_4gpu`. All source and focused
+test changes were removed. The retained handshake already implements the
+required Stage-A synchronization boundary: after preceding DDP/commit, Stage A
+releases `ready_slot`; Stage B may then launch `prefetch(k+1)`; Stage A waits
+for launch confirmation before compute. Keep physical packing/owner-read/launch
+execution on the prefetch thread unless profiling isolates a smaller callable
+that can move without transferring the complete dynamic route lifecycle.
+Eight-GPU remains gated.
 
 2026-09-24: Rejected simply removing the DataLoader pre-yield launch wait. The
 candidate kept the existing depth-one Stage-B pending slot and let the main

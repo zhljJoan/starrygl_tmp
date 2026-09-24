@@ -20,7 +20,6 @@ from .pipeline import finish_batch, launch_batch, record_batch_stream
 
 WindowInput = tuple[int, range, tuple[int, ...]]
 ReadyBatch = tuple[Batch, torch.cuda.Event | None]
-PreparedBatch = tuple[Batch, Sequence[Tensor], Sequence[Tensor]]
 GraphAccessor = Callable[..., AccessedWindow]
 
 
@@ -130,8 +129,7 @@ class DataLoader:
         accessed = iter(self._accessed())
         if not self.enabled:
             for item in accessed:
-                launched = self._launch_prepared(self._prepare(item))
-                yield self._wait_ready(self._finish(launched))
+                yield self._wait_ready(self._finish(self._launch(item)))
             return
 
         request_queue: Queue = Queue(maxsize=1)
@@ -141,7 +139,7 @@ class DataLoader:
         changed = Condition()
         stop = Event()
         sentinel = object()
-        launch_slot: dict[str, Any] = {"value": None}
+        progress: dict[str, Any] = {"launched": 0, "done": False, "error": None}
 
         def source_worker() -> None:
             try:
@@ -163,28 +161,27 @@ class DataLoader:
                 while _acquire(ready_slot, stop):
                     item = _get(request_queue, stop)
                     if item is sentinel:
+                        ready_slot.release()
+                        with changed:
+                            progress["done"] = True
+                            changed.notify_all()
                         _put(ready_queue, sentinel, stop)
                         return
                     if isinstance(item, BaseException):
                         raise item
                     request_slot.release()
-                    if not _put(ready_queue, self._prepare(item), stop):
-                        ready_slot.release()
-                        return
+                    launched = self._launch(item)
                     with changed:
-                        changed.wait_for(
-                            lambda: launch_slot["value"] is not None
-                            or stop.is_set()
-                        )
-                        if stop.is_set():
-                            ready_slot.release()
-                            return
-                        launched = launch_slot["value"]
-                        launch_slot["value"] = None
+                        progress["launched"] += 1
+                        changed.notify_all()
                     if not _put(ready_queue, self._finish(launched), stop):
                         ready_slot.release()
                         return
             except BaseException as exc:
+                with changed:
+                    progress["error"] = exc
+                    progress["done"] = True
+                    changed.notify_all()
                 _put(ready_queue, exc, stop)
 
         workers = (
@@ -194,35 +191,25 @@ class DataLoader:
         for worker in workers:
             worker.start()
 
-        def launch(prepared: PreparedBatch) -> None:
-            launched = self._launch_prepared(prepared)
-            with changed:
-                launch_slot["value"] = launched
-                changed.notify()
-
+        consumed = 0
         try:
-            item = _get(ready_queue, stop)
-            if item is sentinel:
-                return
-            if isinstance(item, BaseException):
-                raise item
-            launch(item)
-            current = _get(ready_queue, stop)
-            if isinstance(current, BaseException):
-                raise current
             while True:
-                ready_slot.release()
                 item = _get(ready_queue, stop)
                 if item is sentinel:
-                    yield self._wait_ready(current)
                     return
                 if isinstance(item, BaseException):
                     raise item
-                launch(item)
-                yield self._wait_ready(current)
-                current = _get(ready_queue, stop)
-                if isinstance(current, BaseException):
-                    raise current
+                consumed += 1
+                ready_slot.release()
+                with changed:
+                    changed.wait_for(
+                        lambda: progress["launched"] > consumed
+                        or progress["done"]
+                    )
+                    error = progress["error"]
+                if error is not None:
+                    raise error
+                yield self._wait_ready(item)
         finally:
             stop.set()
             request_slot.release()
@@ -276,7 +263,7 @@ class DataLoader:
                 item = self.access(window_id=window_id, input_window=input_window, chunk_limits=limits)
             yield item
 
-    def _prepare(self, item: AccessedWindow) -> PreparedBatch:
+    def _launch(self, item: AccessedWindow):
         context = (
             torch.cuda.stream(self.prefetch_stream)
             if self.prefetch_stream is not None
@@ -284,26 +271,12 @@ class DataLoader:
         )
         with context:
             _, _, _, feature_node_ids, edge_ids = item
-            return (
+            return launch_batch(
                 materialize_accessed_window(
                     item,
                     mode=self.mode,
                     num_layers=self.num_layers,
                 ),
-                feature_node_ids,
-                edge_ids,
-            )
-
-    def _launch_prepared(self, prepared: PreparedBatch):
-        context = (
-            torch.cuda.stream(self.prefetch_stream)
-            if self.prefetch_stream is not None
-            else nullcontext()
-        )
-        with context:
-            batch, feature_node_ids, edge_ids = prepared
-            return launch_batch(
-                batch,
                 store=self.store,
                 comm=self.comm,
                 options=self.options,
