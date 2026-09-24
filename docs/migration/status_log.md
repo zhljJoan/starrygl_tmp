@@ -8678,10 +8678,13 @@ request UID all-to-all plus wait, asynchronous response all-to-all, then a
 DDP-like all-reduce. Rank 1 delays entry to the all-reduce and contributes an
 empty request payload, proving that empty participation and rank skew retain
 the same collective order. The two-rank Gloo test passed on both ranks in three
-consecutive runs; the local file passed 11 tests with 2 skips. Production code
-is unchanged: the existing `ready_slot`/launch-confirmation handshake is the
-fixed epoch, so no dispatcher, queue, barrier, process group, payload packing,
-or kernel was introduced. A four-A40 smoke is pending; eight-GPU remains
+consecutive runs; the local file passed 11 tests with 2 skips. The four-A40
+TGN historical smoke completed without deadlock and epoch 2 measured 0.5863 s,
+versus 0.6075 s for the adjacent retained-code A/B smoke. Output:
+`/mnt/nfs/zlj/starrygl_fixed_epoch_smoke_4gpu`. Production code is unchanged:
+the existing `ready_slot`/launch-confirmation handshake is the fixed epoch, so
+no dispatcher, queue, barrier, process group, payload packing, or kernel was
+introduced. A 10-epoch stability screen remains pending; eight-GPU remains
 gated.
 
 2026-09-24: Rejected moving dependency launch execution onto the Stage-A OS
