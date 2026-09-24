@@ -8677,9 +8677,13 @@ The common path remains `window row -> accessor -> materialized Batch ->
 dependency access -> model/task -> state update`; only the unavoidable
 specialization boundary changes ownership: Stage B materializes, while Stage A
 launches all distributed feature/stale-state dependencies at the batch
-synchronization point after the preceding model/DDP work. Existing async
-handles and buffers remain the depth-one pending slot and are finished at the
-next Stage-A synchronization point. No queue, process group, public API,
+synchronization point after the preceding model/DDP work. The first version
+also deferred finish/writeback to the next Stage-A point; it completed without
+deadlock but epoch 2 took 2.0921 s, versus the retained 0.6041 s median. Output:
+`/mnt/nfs/zlj/starrygl_stage_a_launch_smoke_4gpu`. The revised handoff returns
+the existing async handles/buffers immediately to Stage B for concurrent
+finish/writeback while preserving Stage-A-only collective launch. No queue,
+process group, public API,
 payload format, cache policy or kernel is added. This selects the existing
 Torch/NCCL async collective and two queues; DGL has no collective scheduler,
 and a custom C++/CUDA operator cannot repair cross-thread collective ordering.

@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from itertools import islice
 from queue import Empty, Full, Queue
-from threading import Event, Semaphore, Thread
+from threading import Condition, Event, Semaphore, Thread
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import torch
@@ -138,8 +138,10 @@ class DataLoader:
         ready_queue: Queue = Queue(maxsize=1)
         request_slot = Semaphore(1)
         ready_slot = Semaphore(1)
+        changed = Condition()
         stop = Event()
         sentinel = object()
+        launch_slot: dict[str, Any] = {"value": None}
 
         def source_worker() -> None:
             try:
@@ -161,13 +163,25 @@ class DataLoader:
                 while _acquire(ready_slot, stop):
                     item = _get(request_queue, stop)
                     if item is sentinel:
-                        ready_slot.release()
                         _put(ready_queue, sentinel, stop)
                         return
                     if isinstance(item, BaseException):
                         raise item
                     request_slot.release()
                     if not _put(ready_queue, self._prepare(item), stop):
+                        ready_slot.release()
+                        return
+                    with changed:
+                        changed.wait_for(
+                            lambda: launch_slot["value"] is not None
+                            or stop.is_set()
+                        )
+                        if stop.is_set():
+                            ready_slot.release()
+                            return
+                        launched = launch_slot["value"]
+                        launch_slot["value"] = None
+                    if not _put(ready_queue, self._finish(launched), stop):
                         ready_slot.release()
                         return
             except BaseException as exc:
@@ -180,14 +194,22 @@ class DataLoader:
         for worker in workers:
             worker.start()
 
-        pending = None
+        def launch(prepared: PreparedBatch) -> None:
+            launched = self._launch_prepared(prepared)
+            with changed:
+                launch_slot["value"] = launched
+                changed.notify()
+
         try:
             item = _get(ready_queue, stop)
             if item is sentinel:
                 return
             if isinstance(item, BaseException):
                 raise item
-            current = self._finish(self._launch_prepared(item))
+            launch(item)
+            current = _get(ready_queue, stop)
+            if isinstance(current, BaseException):
+                raise current
             while True:
                 ready_slot.release()
                 item = _get(ready_queue, stop)
@@ -196,25 +218,24 @@ class DataLoader:
                     return
                 if isinstance(item, BaseException):
                     raise item
-                pending = self._launch_prepared(item)
+                launch(item)
                 yield self._wait_ready(current)
-                current = self._finish(pending)
-                pending = None
+                current = _get(ready_queue, stop)
+                if isinstance(current, BaseException):
+                    raise current
         finally:
-            try:
-                if pending is not None:
-                    self._finish(pending)
-            finally:
-                stop.set()
-                request_slot.release()
-                ready_slot.release()
-                for queue in (request_queue, ready_queue):
-                    try:
-                        queue.put_nowait(sentinel)
-                    except Full:
-                        pass
-                for worker in workers:
-                    worker.join()
+            stop.set()
+            request_slot.release()
+            ready_slot.release()
+            with changed:
+                changed.notify_all()
+            for queue in (request_queue, ready_queue):
+                try:
+                    queue.put_nowait(sentinel)
+                except Full:
+                    pass
+            for worker in workers:
+                worker.join()
 
     def _accessed(self) -> Iterable[AccessedWindow]:
         windows: Iterable[WindowInput] = (

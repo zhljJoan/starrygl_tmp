@@ -31,9 +31,9 @@ cache、通信上下文和 materializer 在 `DataLoader.__init__` 中绑定一�
 不通过逐窗口配置、plan 或 request wrapper 转发。
 
 `ready_queue` 内部传短 tuple `(Batch, node_ids, edge_rows)`。Stage A 在训练循环的
-批间同步点发起下一批 dependency collective，并保存现有 pending handle/buffer；
-下一次迭代器恢复时完成 wait/writeback。CUDA event 不写入 `Batch`，Stage A 在
-当前 compute stream 上执行 `wait_event` 和 `record_stream`。
+批间同步点发起下一批 dependency collective，再把现有 pending handle/buffer
+交回 Stage B wait/writeback。CUDA event 不写入 `Batch`，Stage A 在当前 compute
+stream 上执行 `wait_event` 和 `record_stream`。
 
 ## CPU、GPU 和 buffer 所有权
 
@@ -41,7 +41,7 @@ cache、通信上下文和 materializer 在 `DataLoader.__init__` 中绑定一�
   设备向量化生成，避免 GPU -> CPU roots 同步。
 - Stage B 只 materialize Batch，不发起 distributed collective。Stage A 在批间同步
   点把 CPU tensor 转为 pinned memory，在 prefetch stream 上提交 non-blocking H2D
-  和 async feature/state collective；下一批同步点完成 handle，并通过 stream
+  和 async feature/state collective；Stage B 随即完成 handle，并通过 stream
   dependency 交付，不执行 host `synchronize()`。
 - Batch tensor 至少存活到 backward 和 state delta 提取完成。Stage A 已对 Batch
   中的 CUDA storage 调用 `record_stream`；当前没有复用 pinned/send/recv buffer，
@@ -58,8 +58,9 @@ cache、通信上下文和 materializer 在 `DataLoader.__init__` 中绑定一�
 ```text
 Stage B materialize(k+1)
   -> Stage A 批间同步点提交 prefetch(k+1) 的全部通信
+  -> Stage B finish/writeback(k+1)
   -> Stage A: exact state / layer forward / endpoint / reverse / gradient / commit
-  -> Stage A 下一同步点 finish(k+1)，再提交 prefetch(k+2)
+  -> Stage A 下一同步点消费 k+1，再提交 prefetch(k+2)
 ```
 
 不再增加唯一 dispatcher 或内部 `CommPlan`。Stage A 是 collective 唯一发起线程，
